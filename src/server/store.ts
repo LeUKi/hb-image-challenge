@@ -15,6 +15,10 @@ export interface Attempt {
   image_key: string | null
   content_type: ImageType
   score: number | null
+  nsfw_score: number | null
+  image_width: number | null
+  image_height: number | null
+  gallery_shared: 0 | 1
   error_code: string | null
   created_at: number
   updated_at: number
@@ -22,8 +26,8 @@ export interface Attempt {
 
 export const RESERVE_SQL = `INSERT INTO image_attempts
   (id, hongbao, user_id, idempotency_key, image_sha256, attempt_no, config_json,
-   status, content_type, created_at, updated_at)
-  SELECT ?, ?, ?, ?, ?, COALESCE(MAX(attempt_no), 0) + 1, ?, 'processing', ?, ?, ?
+   status, content_type, created_at, updated_at, gallery_shared, image_width, image_height)
+  SELECT ?, ?, ?, ?, ?, COALESCE(MAX(attempt_no), 0) + 1, ?, 'processing', ?, ?, ?, ?, ?, ?
   FROM image_attempts WHERE hongbao = ? AND user_id = ?
   HAVING COUNT(*) < ?
   ON CONFLICT DO NOTHING RETURNING *`
@@ -33,16 +37,36 @@ export async function existingAttempt(db: D1Database, identity: Identity, idempo
     .bind(identity.hongbao, identity.sub, idempotencyKey).first<Attempt>()
 }
 
-export async function reserveAttempt(db: D1Database, identity: Identity, key: string, hash: string, contentType: ImageType, config: ChallengeConfig): Promise<{ attempt: Attempt; created: boolean }> {
+export async function reserveAttempt(db: D1Database, identity: Identity, key: string, hash: string, contentType: ImageType, config: ChallengeConfig, image: { shared: boolean; width: number; height: number } | null = null): Promise<{ attempt: Attempt; created: boolean }> {
   const id = crypto.randomUUID(), now = Date.now()
   const attempt = await db.prepare(RESERVE_SQL).bind(
     id, identity.hongbao, identity.sub, key, hash, JSON.stringify(config), contentType,
-    now, now, identity.hongbao, identity.sub, config.maxAttempts,
+    now, now, image?.shared ? 1 : 0, image?.width ?? null, image?.height ?? null,
+    identity.hongbao, identity.sub, config.maxAttempts,
   ).first<Attempt>()
   if (attempt) return { attempt, created: true }
   const existing = await existingAttempt(db, identity, key)
   if (existing) return { attempt: existing, created: false }
   throw new ApiFailure(429, 'attempts_exhausted', '这个红包的图片尝试次数已用完')
+}
+
+export async function galleryGrant(db: D1Database, hongbao: string, user: string): Promise<string> {
+  const grant = (crypto.randomUUID() + crypto.randomUUID()).replaceAll('-', '')
+  await db.prepare('INSERT INTO gallery_grants (hongbao, user_id, grant, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (hongbao, user_id) DO NOTHING')
+    .bind(hongbao, user, grant, Date.now()).run()
+  const stored = await db.prepare('SELECT grant FROM gallery_grants WHERE hongbao = ? AND user_id = ?')
+    .bind(hongbao, user).first<{ grant: string }>()
+  if (!stored) throw new Error('Gallery grant was not stored')
+  return stored.grant
+}
+
+export async function hasGalleryGrant(db: D1Database, identity: Identity, grant: string | null): Promise<boolean> {
+  if (!grant) return false
+  if (!/^[a-f0-9]{64}$/.test(grant)) throw new ApiFailure(403, 'invalid_gallery_grant', '查看许可无效，请重新读取领取状态')
+  const stored = await db.prepare('SELECT 1 AS valid FROM gallery_grants WHERE hongbao = ? AND user_id = ? AND grant = ?')
+    .bind(identity.hongbao, identity.sub, grant).first<{ valid: number }>()
+  if (!stored) throw new ApiFailure(403, 'invalid_gallery_grant', '查看许可无效，请重新读取领取状态')
+  return true
 }
 
 export async function createNonce(db: D1Database): Promise<string> {

@@ -22,7 +22,9 @@
     "judge:test": "npm --prefix judge test",
     "judge:check": "npm --prefix judge run check",
     "judge:page": "npm --prefix judge run page --",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "simulator": "npm run build && node scripts/dev-simulator.mjs",
+    "simulator:start": "node scripts/dev-simulator.mjs"
   },
   "cloudflare": {
     "bindings": {

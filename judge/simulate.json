@@ -3,18 +3,28 @@
     "server": "http://127.0.0.1:5173/",
     "challenge": "这张图片里有一只猫",
     "minScore": 70,
-    "maxScore": 100,
-    "maxAttempts": 3,
+    "maxScore": 80,
+    "maxAttempts": 5,
     "saveImages": true,
-    "reward": 100
+    "reward": 1000,
+    "scoreReward": true,
+    "minReward": 100
   },
   "hongbao": {
-    "title": "图片挑战 · 拍一只猫",
+    "title": "找一只猫",
     "total": 10000
   },
   "submissions": [
     {
       "who": "小明",
+      "input": "开始挑战"
+    },
+    {
+      "who": "小红",
+      "input": "开始挑战"
+    },
+    {
+      "who": "小刚",
       "input": "开始挑战"
     }
   ]

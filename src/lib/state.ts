@@ -1,5 +1,5 @@
 import { atom } from 'jotai'
-import type { Hb, HbHongbao, HbViewer } from '../types/hb-sdk'
+import type { Hb, HbHongbao, HbMe, HbMyView, HbViewer } from '../types/hb-sdk'
 import type { UploadResult } from '../shared/contracts'
 
 export interface PlatformSession {
@@ -7,6 +7,9 @@ export interface PlatformSession {
   sdk?: Hb
   hongbao?: HbHongbao
   viewer?: HbViewer
+  participantStatus?: 'checking' | 'ready' | 'error'
+  me?: HbMe
+  myView?: HbMyView | null
   error?: string
 }
 

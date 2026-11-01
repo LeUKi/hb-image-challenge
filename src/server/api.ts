@@ -1,28 +1,41 @@
 import { MAX_ATTEMPTS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MODEL } from '../shared/contracts'
-import type { ChallengeConfig, PublicConfig, UploadResult } from '../shared/contracts'
+import type { ChallengeConfig, GalleryItem, GalleryResponse, PublicConfig, UploadResult } from '../shared/contracts'
 import type { AppEnv } from './env'
 import { pageToken, platformSite, verifyIdentity } from './auth'
-import { loadChallenge } from './challenge'
+import { loadChallenge, loadChallengeContext } from './challenge'
 import { ApiFailure } from './errors'
 import { imageHash, readImage, validateImage } from './images'
 import { scoreImage } from './ai'
-import { consumeNonce, createNonce, existingAttempt, reserveAttempt } from './store'
+import { consumeNonce, createNonce, existingAttempt, galleryGrant, hasGalleryGrant, reserveAttempt } from './store'
 import type { Attempt } from './store'
+import type { Identity } from './auth'
 
 function json(value: unknown, status = 200): Response { return Response.json(value, { status }) }
 
-function replay(attempt: Attempt, hash: string): Response {
+function uploadResult(attempt: Attempt, remaining?: number): UploadResult {
+  const config = JSON.parse(attempt.config_json) as ChallengeConfig
+  if (attempt.score === null) throw new Error('Ready result is missing score')
+  return {
+    id: attempt.id, score: attempt.score, challenge: config.challenge,
+    attempt: attempt.attempt_no, remaining: remaining ?? Math.max(0, config.maxAttempts - attempt.attempt_no),
+    saved: attempt.image_key !== null, nsfwScore: attempt.nsfw_score ?? null,
+    width: attempt.image_width ?? null, height: attempt.image_height ?? null,
+  }
+}
+
+async function remainingAttempts(db: D1Database, identity: Pick<Identity, 'hongbao' | 'sub'>, maxAttempts: number): Promise<number> {
+  const used = await db.prepare('SELECT COALESCE(MAX(attempt_no), 0) AS used FROM image_attempts WHERE hongbao = ? AND user_id = ?')
+    .bind(identity.hongbao, identity.sub).first<{ used: number }>()
+  return Math.max(0, maxAttempts - (used?.used ?? 0))
+}
+
+async function replay(attempt: Attempt, hash: string, db: D1Database): Promise<Response> {
   if (attempt.image_sha256 !== hash) throw new ApiFailure(409, 'idempotency_conflict', '同一个上传编号不能用于不同的图片')
   if (attempt.status === 'processing') throw new ApiFailure(409, 'processing', '这张图片仍在处理，请稍后查询已有结果，不要重新上传')
   if (attempt.status === 'failed') throw new ApiFailure(502, attempt.error_code ?? 'processing_failed', '本次处理未完成，已记录这次尝试，请勿重复提交同一上传')
   const config = JSON.parse(attempt.config_json) as ChallengeConfig
-  if (attempt.score === null) throw new Error('Ready result is missing score')
-  const result: UploadResult = {
-    id: attempt.id, score: attempt.score, challenge: config.challenge,
-    attempt: attempt.attempt_no, remaining: Math.max(0, config.maxAttempts - attempt.attempt_no),
-    saved: attempt.image_key !== null,
-  }
-  return json(result)
+  const remaining = await remainingAttempts(db, { hongbao: attempt.hongbao, sub: attempt.user_id }, config.maxAttempts)
+  return json(uploadResult(attempt, remaining))
 }
 
 async function upload(request: Request, env: AppEnv): Promise<Response> {
@@ -35,11 +48,13 @@ async function upload(request: Request, env: AppEnv): Promise<Response> {
   const info = validateImage(bytes, request.headers.get('Content-Type'))
   const hash = await imageHash(bytes)
   const existing = await existingAttempt(env.DB, identity, key)
-  if (existing) return replay(existing, hash)
+  if (existing) return replay(existing, hash, env.DB)
   const config = await loadChallenge(env, identity, new URL(request.url).origin)
   await consumeNonce(env.DB, nonce)
-  const reserved = await reserveAttempt(env.DB, identity, key, hash, info.contentType, config)
-  if (!reserved.created) return replay(reserved.attempt, hash)
+  const reserved = await reserveAttempt(env.DB, identity, key, hash, info.contentType, config, {
+    shared: request.headers.get('X-Hb-Gallery-Consent') === 'v1', width: info.width, height: info.height,
+  })
+  if (!reserved.created) return replay(reserved.attempt, hash, env.DB)
   const attempt = reserved.attempt
   const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[info.contentType]
   const imageKey = config.saveImages ? `images/${identity.hongbao}/${identity.sub}/${attempt.id}.${extension}` : null
@@ -58,9 +73,9 @@ async function upload(request: Request, env: AppEnv): Promise<Response> {
       .bind(savedKey, code, Date.now(), attempt.id).run()
     throw new ApiFailure(502, code, stored.status === 'rejected' ? '图片保存失败，本次没有生成可兑奖结果；已记录这次尝试' : 'AI 评分失败，本次没有生成可兑奖结果；已记录这次尝试')
   }
-  await env.DB.prepare("UPDATE image_attempts SET status = 'ready', image_key = ?, score = ?, updated_at = ? WHERE id = ? AND status = 'processing'")
-    .bind(savedKey, evaluated.value, Date.now(), attempt.id).run()
-  return replay({ ...attempt, status: 'ready', image_key: savedKey, score: evaluated.value }, hash)
+  await env.DB.prepare("UPDATE image_attempts SET status = 'ready', image_key = ?, score = ?, nsfw_score = ?, updated_at = ? WHERE id = ? AND status = 'processing'")
+    .bind(savedKey, evaluated.value.score, evaluated.value.nsfwScore, Date.now(), attempt.id).run()
+  return replay({ ...attempt, status: 'ready', image_key: savedKey, score: evaluated.value.score, nsfw_score: evaluated.value.nsfwScore }, hash, env.DB)
 }
 
 async function judgeResult(request: Request, env: AppEnv, id: string): Promise<Response> {
@@ -71,9 +86,11 @@ async function judgeResult(request: Request, env: AppEnv, id: string): Promise<R
     .bind(id, identity.hongbao, user).first<Attempt>()
   if (!result || result.score === null) return json({ found: false })
   const config = JSON.parse(result.config_json) as ChallengeConfig
+  const passed = result.score >= config.minScore && result.score <= config.maxScore
   return json({
     found: true, id: result.id, hongbao: result.hongbao, user: result.user_id,
     ...config, score: result.score, attempt: result.attempt_no, saved: result.image_key !== null,
+    ...(passed ? { galleryGrant: await galleryGrant(env.DB, identity.hongbao, user) } : {}),
   })
 }
 
@@ -83,14 +100,82 @@ async function playerResult(request: Request, env: AppEnv, id: string): Promise<
     .bind(id, identity.hongbao, identity.sub).first<Attempt>()
   if (!result) throw new ApiFailure(404, 'result_not_found', '没有找到这次上传')
   if (result.status !== 'ready') return json({ id: result.id, status: result.status, code: result.error_code })
-  return replay(result, result.image_sha256)
+  return replay(result, result.image_sha256, env.DB)
+}
+
+async function fullGallery(request: Request, env: AppEnv, identity: Identity, ended: boolean): Promise<boolean> {
+  if (ended || identity.sub === env.OWNER_ID) return true
+  return hasGalleryGrant(env.DB, identity, request.headers.get('X-Hb-Gallery-Grant'))
+}
+
+function passed(attempt: Attempt): boolean {
+  const config = JSON.parse(attempt.config_json) as ChallengeConfig
+  return attempt.score !== null && attempt.score >= config.minScore && attempt.score <= config.maxScore
+}
+
+function encodeCursor(attempt: Attempt): string {
+  return btoa(JSON.stringify([attempt.created_at, attempt.id])).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '')
+}
+
+function decodeCursor(value: string | null): [number, string] | null {
+  if (value === null) return null
+  try {
+    if (!/^[a-zA-Z0-9_-]{1,160}$/.test(value)) throw new Error('Invalid cursor')
+    const decoded: unknown = JSON.parse(atob(value.replaceAll('-', '+').replaceAll('_', '/')))
+    if (!Array.isArray(decoded) || decoded.length !== 2 || !Number.isSafeInteger(decoded[0]) || decoded[0] < 0 || typeof decoded[1] !== 'string' || !/^[a-f0-9-]{36}$/.test(decoded[1])) throw new Error('Invalid cursor')
+    return decoded as [number, string]
+  } catch { throw new ApiFailure(400, 'invalid_cursor', '图片列表的分页位置无效，请刷新后重试') }
+}
+
+async function gallery(request: Request, env: AppEnv): Promise<Response> {
+  const identity = await verifyIdentity(pageToken(request), 'page', request, env)
+  const url = new URL(request.url)
+  const context = await loadChallengeContext(env, identity, url.origin)
+  const all = await fullGallery(request, env, identity, context.ended)
+  const cursor = decodeCursor(url.searchParams.get('cursor'))
+  const size = url.searchParams.get('limit') ?? '24'
+  if (!/^\d{1,2}$/.test(size) || Number(size) < 1 || Number(size) > 60) throw new ApiFailure(400, 'invalid_limit', '每次最多读取 60 张图片')
+  const limit = Number(size)
+  const bindings: (string | number)[] = [identity.hongbao, identity.sub, identity.sub === env.OWNER_ID ? 1 : 0, all ? 1 : 0]
+  let sql = `SELECT * FROM image_attempts WHERE hongbao = ? AND status = 'ready' AND score IS NOT NULL
+    AND (user_id = ? OR ? = 1 OR (gallery_shared = 1 AND (? = 1
+      OR score < CAST(json_extract(config_json, '$.minScore') AS REAL)
+      OR score > CAST(json_extract(config_json, '$.maxScore') AS REAL))))`
+  if (cursor) {
+    sql += ' AND (created_at < ? OR (created_at = ? AND id < ?))'
+    bindings.push(cursor[0], cursor[0], cursor[1])
+  }
+  sql += ' ORDER BY created_at DESC, id DESC LIMIT ?'
+  bindings.push(limit + 1)
+  const records = await env.DB.prepare(sql).bind(...bindings).all<Attempt>()
+  const page = records.results.slice(0, limit)
+  const items: GalleryItem[] = page.map(attempt => ({
+    id: attempt.id, score: attempt.score!, nsfwScore: attempt.nsfw_score,
+    saved: attempt.image_key !== null, createdAt: attempt.created_at,
+    own: attempt.user_id === identity.sub, width: attempt.image_width,
+    height: attempt.image_height, passed: passed(attempt),
+  }))
+  const remaining = await remainingAttempts(env.DB, identity, context.config.maxAttempts)
+  const latest = await env.DB.prepare("SELECT * FROM image_attempts WHERE hongbao = ? AND user_id = ? AND status = 'ready' ORDER BY attempt_no DESC LIMIT 1")
+    .bind(identity.hongbao, identity.sub).first<Attempt>()
+  const response: GalleryResponse = {
+    items, next: records.results.length > limit ? encodeCursor(page[page.length - 1]) : null,
+    visibility: all ? 'all' : 'misses', remaining,
+    latest: latest ? uploadResult(latest, remaining) : null,
+  }
+  return json(response)
 }
 
 async function image(request: Request, env: AppEnv, id: string): Promise<Response> {
   const identity = await verifyIdentity(pageToken(request), 'page', request, env)
   const result = await env.DB.prepare('SELECT * FROM image_attempts WHERE id = ? AND hongbao = ?')
     .bind(id, identity.hongbao).first<Attempt>()
-  if (!result?.image_key || (result.user_id !== identity.sub && identity.sub !== env.OWNER_ID)) throw new ApiFailure(404, 'image_not_found', '图片不存在或你没有查看权限')
+  if (!result?.image_key) throw new ApiFailure(404, 'image_not_found', '图片不存在或你没有查看权限')
+  if (result.user_id !== identity.sub && identity.sub !== env.OWNER_ID) {
+    if (result.status !== 'ready' || !result.gallery_shared) throw new ApiFailure(404, 'image_not_found', '图片不存在或你没有查看权限')
+    const context = await loadChallengeContext(env, identity, new URL(request.url).origin)
+    if (passed(result) && !await fullGallery(request, env, identity, context.ended)) throw new ApiFailure(404, 'image_not_found', '图片不存在或你没有查看权限')
+  }
   const object = await env.IMAGES.get(result.image_key)
   if (!object) throw new ApiFailure(404, 'image_not_found', '图片不存在')
   return new Response(object.body, { headers: { 'Content-Type': result.content_type, 'Content-Disposition': 'inline', 'Content-Security-Policy': "default-src 'none'; sandbox", 'X-Content-Type-Options': 'nosniff' } })
@@ -113,6 +198,7 @@ async function route(request: Request, env: AppEnv): Promise<Response> {
     return json({ nonce: await createNonce(env.DB) })
   }
   if (url.pathname === '/api/upload' && request.method === 'POST') return upload(request, env)
+  if (url.pathname === '/api/gallery' && request.method === 'GET') return gallery(request, env)
   const resultMatch = /^\/api\/results\/([a-f0-9-]{36})$/.exec(url.pathname)
   if (resultMatch && request.method === 'GET') return judgeResult(request, env, resultMatch[1])
   const imageMatch = /^\/api\/images\/([a-f0-9-]{36})$/.exec(url.pathname)

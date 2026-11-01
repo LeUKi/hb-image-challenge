@@ -15,7 +15,7 @@ async function fixture(saveImages = true) {
   const saveParam = published.activity.judge.params.find(entry => entry.param.key === 'saveImages')!
   saveParam.value = saveImages
   vi.stubGlobal('fetch', vi.fn().mockImplementation(() => Promise.resolve(Response.json(published))))
-  const run = vi.fn().mockResolvedValue({ answers: { match: { type: 'noul', noul: 0.85 } } })
+  const run = vi.fn().mockResolvedValue({ answers: { match: { type: 'noul', noul: 0.85 }, nsfw: { type: 'noul', noul: 0.12 } } })
   const put = vi.fn().mockResolvedValue({ key: 'saved' })
   const env = { ...environment, DB: db, AI: { run }, IMAGES: { put } } as unknown as AppEnv
   const key = crypto.randomUUID()
@@ -37,17 +37,39 @@ describe('upload workflow', () => {
     let finished = false
     const pending = handleApiRequest(request(), env).then(response => { finished = true; return response! })
     await vi.waitFor(() => { expect(run).toHaveBeenCalledTimes(1); expect(put).toHaveBeenCalledTimes(1) })
-    finishAI({ answers: { match: { type: 'noul', noul: 0.85 } } })
+    finishAI({ answers: { match: { type: 'noul', noul: 0.85 }, nsfw: { type: 'noul', noul: 0.12 } } })
     await Promise.resolve()
     expect(finished).toBe(false)
     finishR2({ key: 'saved' })
     const response = await pending
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ score: 85, attempt: 1, remaining: 2, saved: true })
+    expect(await response.json()).toMatchObject({ score: 85, nsfwScore: 12, width: 1, height: 1, attempt: 1, remaining: 2, saved: true })
     const repeated = await handleApiRequest(request(), env)
     expect(repeated!.status).toBe(200)
     expect(run).toHaveBeenCalledTimes(1); expect(put).toHaveBeenCalledTimes(1)
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM image_attempts').get()).toMatchObject({ n: 1 })
+    sqlite.close()
+  })
+  it('shares new uploads only with an explicit v1 disclosure acknowledgment, leaving older clients private', async () => {
+    const { sqlite, env, request } = await fixture()
+    const optedIn = request()
+    optedIn.headers.set('X-Hb-Gallery-Consent', 'v1')
+    expect((await handleApiRequest(optedIn, env))!.status).toBe(200)
+    expect(sqlite.prepare('SELECT gallery_shared, image_width, image_height, nsfw_score FROM image_attempts').get())
+      .toMatchObject({ gallery_shared: 1, image_width: 1, image_height: 1, nsfw_score: 12 })
+    sqlite.close()
+
+    const legacy = await fixture()
+    expect((await handleApiRequest(legacy.request(), legacy.env))!.status).toBe(200)
+    expect(legacy.sqlite.prepare('SELECT gallery_shared FROM image_attempts').get()).toMatchObject({ gallery_shared: 0 })
+    legacy.sqlite.close()
+  })
+  it('retains a matching score with unknown safety if the NSFW answer is absent', async () => {
+    const { sqlite, env, request, run } = await fixture()
+    run.mockResolvedValue({ answers: { match: { type: 'noul', noul: 0.9 } } })
+    const response = await handleApiRequest(request(), env)
+    expect(await response!.json()).toMatchObject({ score: 90, nsfwScore: null })
+    expect(sqlite.prepare('SELECT nsfw_score FROM image_attempts').get()).toMatchObject({ nsfw_score: null })
     sqlite.close()
   })
   it('never declares a ready result if R2 fails even when AI succeeds', async () => {

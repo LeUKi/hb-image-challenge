@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { loadChallenge } from '../../src/server/challenge'
+import { loadChallenge, loadChallengeContext, parseChallenge } from '../../src/server/challenge'
 import type { AppEnv } from '../../src/server/env'
 import { activity, environment, identity, params } from './helpers'
 
@@ -40,5 +40,18 @@ describe('trusted platform requests', () => {
   it('rejects trusted responses for a different packet', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ activity: { ...activity.activity, id: 'another-packet' } })))
     await expect(loadChallenge(env, identity, origin)).rejects.toMatchObject({ status: 403, code: 'wrong_activity' })
+  })
+  it('allows an ended gallery context while refusing new uploads for the same activity', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({ activity: { ...activity.activity, status: 'ended' } })))
+    await expect(loadChallengeContext(env, identity, origin)).resolves.toMatchObject({ ended: true, active: false })
+    await expect(loadChallenge(env, identity, origin)).rejects.toMatchObject({ code: 'activity_inactive' })
+  })
+  it('freezes current author reward rules and supplies fixed-reward defaults only when absent', () => {
+    const original = { server: params.server, challenge: params.challenge, minScore: params.minScore, maxScore: params.maxScore, maxAttempts: params.maxAttempts, saveImages: params.saveImages }
+    expect(parseChallenge(original, origin)).toMatchObject({ reward: 100, scoreReward: false, minReward: 1 })
+    expect(parseChallenge({ ...params, reward: 1000, scoreReward: true, minReward: 10 }, origin)).toMatchObject({ reward: 1000, scoreReward: true, minReward: 10 })
+    for (const change of [{ reward: 0 }, { reward: 1.5 }, { reward: Number.MAX_SAFE_INTEGER + 1 }, { scoreReward: 'true' }, { scoreReward: true, reward: 10, minReward: 11 }, { minReward: 0 }]) {
+      expect(() => parseChallenge({ ...params, ...change }, origin)).toThrow()
+    }
   })
 })

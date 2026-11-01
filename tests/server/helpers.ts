@@ -1,15 +1,17 @@
 import { DatabaseSync } from 'node:sqlite'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import type { AppEnv } from '../../src/server/env'
 import type { Identity } from '../../src/server/auth'
 
 export function sqliteD1(): { db: D1Database; sqlite: DatabaseSync } {
   const sqlite = new DatabaseSync(':memory:')
-  sqlite.exec(readFileSync(new URL('../../migrations/0001_initial.sql', import.meta.url), 'utf8'))
+  const migrations = new URL('../../migrations/', import.meta.url)
+  for (const file of readdirSync(migrations).filter(name => name.endsWith('.sql')).sort()) sqlite.exec(readFileSync(new URL(file, migrations), 'utf8'))
   function prepare(sql: string, bindings: unknown[] = []): object {
     return {
       bind: (...values: unknown[]) => prepare(sql, values),
       first: async () => sqlite.prepare(sql).get(...bindings as (string | number | null)[]) ?? null,
+      all: async () => ({ success: true, results: sqlite.prepare(sql).all(...bindings as (string | number | null)[]) }),
       run: async () => {
         const result = sqlite.prepare(sql).run(...bindings as (string | number | null)[])
         return { success: true, meta: { changes: Number(result.changes) } }
@@ -33,7 +35,7 @@ export function sqliteD1(): { db: D1Database; sqlite: DatabaseSync } {
 
 export const identity = { hongbao: '12345678-1234-4234-8234-123456789012', sender: '10000', sub: '42', nonce: 'valid-nonce-example' } satisfies Identity
 export const environment = { OWNER_ID: '10000', HB_SITE: 'https://hb.example.com' } satisfies Pick<AppEnv, 'OWNER_ID' | 'HB_SITE'>
-export const params = { server: 'https://challenge.example.com/', challenge: '这是一只猫吗？', minScore: 70, maxScore: 100, maxAttempts: 3, saveImages: true }
+export const params = { server: 'https://challenge.example.com/', challenge: '这是一只猫吗？', minScore: 70, maxScore: 100, maxAttempts: 3, saveImages: true, reward: 100, scoreReward: false, minReward: 1 }
 export const activity = {
   activity: {
     id: identity.hongbao, status: 'active', author: { id: '11111111-2222-4333-8444-555555555555' },

@@ -34,7 +34,25 @@
       ],
       "expect": {
         "add": 100,
-        "settled": 100
+        "settled": 100,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+              "score": 85,
+              "remaining": 2,
+              "passed": true,
+              "reward": 100
+            }
+          }
+        }
       }
     },
     {
@@ -113,7 +131,25 @@
       ],
       "expect": {
         "add": 0,
-        "settle": false
+        "settle": false,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "本次未通过",
+            "data": {
+              "v": 1,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+              "score": 69.9,
+              "remaining": 2,
+              "passed": false,
+              "reward": 0
+            }
+          }
+        }
       }
     },
     {
@@ -139,7 +175,25 @@
         }
       ],
       "expect": {
-        "settled": 0
+        "settled": 0,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "本次未通过",
+            "data": {
+              "v": 1,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+              "score": 40,
+              "remaining": 0,
+              "passed": false,
+              "reward": 0
+            }
+          }
+        }
       }
     },
     {
@@ -480,7 +534,11 @@
       ],
       "expect": {
         "add": 0,
-        "settle": false
+        "settle": false,
+        "player": {
+          "state": null,
+          "view": null
+        }
       }
     },
     {
@@ -494,7 +552,11 @@
       ],
       "expect": {
         "add": 0,
-        "settle": false
+        "settle": false,
+        "player": {
+          "state": null,
+          "view": null
+        }
       }
     },
     {
@@ -508,7 +570,11 @@
       ],
       "expect": {
         "add": 0,
-        "settle": false
+        "settle": false,
+        "player": {
+          "state": null,
+          "view": null
+        }
       }
     },
     {
@@ -535,6 +601,1258 @@
         "add": 0,
         "settle": false
       }
+    },
+    {
+      "name": "动态奖励最低合格分对应最低奖励",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 70,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 100,
+        "settle": true,
+        "settled": 100,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 70,
+              "remaining": 2,
+              "passed": true,
+              "reward": 100,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "动态奖励中点映射并只在私人结果携带图库凭据",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100,
+            "galleryGrant": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        }
+      ],
+      "expect": {
+        "add": 550,
+        "settle": true,
+        "settled": 550,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 75,
+              "remaining": 2,
+              "passed": true,
+              "reward": 550,
+              "galleryGrant": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "动态奖励最高合格分对应最高奖励",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 80,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 1000,
+        "settle": true,
+        "settled": 1000,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 80,
+              "remaining": 2,
+              "passed": true,
+              "reward": 1000,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "动态奖励小数边界不因浮点误差少一分",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 70.1,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 109,
+        "settle": true,
+        "settled": 109,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 70.1,
+              "remaining": 2,
+              "passed": true,
+              "reward": 109,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "动态奖励不足一分向下取整",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 70.01,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 100,
+        "settle": true,
+        "settled": 100,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 70.01,
+              "remaining": 2,
+              "passed": true,
+              "reward": 100,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "动态奖励接近上限不越过最高奖励",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 79.99,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 999,
+        "settle": true,
+        "settled": 999,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 79.99,
+              "remaining": 2,
+              "passed": true,
+              "reward": 999,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "动态奖励区间外低分不发奖且不暴露图库凭据",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 69.99,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100,
+            "galleryGrant": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false,
+        "settled": null,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "本次未通过",
+            "data": {
+              "v": 1,
+              "score": 69.99,
+              "remaining": 2,
+              "passed": false,
+              "reward": 0,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "动态奖励区间外高分也不发奖",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 80.01,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false,
+        "settled": null,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "本次未通过",
+            "data": {
+              "v": 1,
+              "score": 80.01,
+              "remaining": 2,
+              "passed": false,
+              "reward": 0,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "动态奖励用尽次数仍未达标结算零且不暴露图库凭据",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 65,
+            "attempt": 3,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100,
+            "galleryGrant": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": true,
+        "settled": 0,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "本次未通过",
+            "data": {
+              "v": 1,
+              "score": 65,
+              "remaining": 0,
+              "passed": false,
+              "reward": 0,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "合格上下限相同达标发最高奖励",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 75,
+        "maxScore": 75,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 75,
+            "maxScore": 75,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 1000,
+        "settle": true,
+        "settled": 1000,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 75,
+              "remaining": 2,
+              "passed": true,
+              "reward": 1000,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "最低最高奖励相同保持固定金额",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 1000
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 1000
+          }
+        }
+      ],
+      "expect": {
+        "add": 1000,
+        "settle": true,
+        "settled": 1000,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 75,
+              "remaining": 2,
+              "passed": true,
+              "reward": 1000,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "关闭动态时忽略较高的最低奖励并发最高奖励",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 100,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 100,
+        "scoreReward": false,
+        "minReward": 200
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 100,
+            "scoreReward": false,
+            "minReward": 200
+          }
+        }
+      ],
+      "expect": {
+        "add": 100,
+        "settle": true,
+        "settled": 100,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 75,
+              "remaining": 2,
+              "passed": true,
+              "reward": 100,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "旧固定结果缺少新参数仍兼容自定义奖励",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 100,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 250
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 250,
+        "settle": true,
+        "settled": 250,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 85,
+              "remaining": 2,
+              "passed": true,
+              "reward": 250,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "无效图库凭据不会进入私人结果",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 100,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true,
+            "reward": 100,
+            "scoreReward": false,
+            "minReward": 1,
+            "galleryGrant": "invalid"
+          }
+        }
+      ],
+      "expect": {
+        "add": 100,
+        "settle": true,
+        "settled": 100,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 85,
+              "remaining": 2,
+              "passed": true,
+              "reward": 100,
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "冻结最高奖励与当前规则不符不能领取",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1001,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false,
+        "settled": null
+      }
+    },
+    {
+      "name": "冻结最低奖励与当前规则不符不能领取",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 99
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false,
+        "settled": null
+      }
+    },
+    {
+      "name": "冻结奖励方式与当前规则不符不能领取",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": false,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false,
+        "settled": null
+      }
+    },
+    {
+      "name": "动态结果缺少冻结最高奖励不能领取",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "scoreReward": true,
+            "minReward": 100
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false,
+        "settled": null
+      }
+    },
+    {
+      "name": "动态结果缺少冻结最低奖励不能领取",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false,
+        "settled": null
+      }
+    },
+    {
+      "name": "末笔奖池不足时私人结果显示实际可发奖励",
+      "params": {
+        "server": "https://images.example.com/",
+        "challenge": "这张图片里有一只猫",
+        "minScore": 70,
+        "maxScore": 80,
+        "maxAttempts": 3,
+        "saveImages": true,
+        "reward": 1000,
+        "scoreReward": true,
+        "minReward": 100
+      },
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 80,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 75,
+            "attempt": 1,
+            "saved": true,
+            "reward": 1000,
+            "scoreReward": true,
+            "minReward": 100,
+            "galleryGrant": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+          }
+        }
+      ],
+      "expect": {
+        "add": 250,
+        "settle": true,
+        "settled": 250,
+        "player": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          },
+          "view": {
+            "summary": "挑战通过",
+            "data": {
+              "v": 1,
+              "score": 75,
+              "remaining": 2,
+              "passed": true,
+              "reward": 250,
+              "galleryGrant": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+              "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            }
+          }
+        }
+      },
+      "hongbao": {
+        "total": 250
+      }
+    },
+    {
+      "name": "核验服务500恢复后可提交同一图片结果",
+      "steps": [
+        {
+          "who": "小明",
+          "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+          "fetch": [
+            {
+              "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10001",
+              "status": 500,
+              "json": {
+                "error": "unavailable"
+              }
+            }
+          ],
+          "expect": {
+            "add": 0,
+            "settle": false,
+            "settled": null,
+            "player": {
+              "state": null,
+              "view": null
+            }
+          }
+        },
+        {
+          "who": "小明",
+          "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+          "fetch": [
+            {
+              "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10001",
+              "json": {
+                "found": true,
+                "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+                "user": "10001",
+                "hongbao": "test",
+                "challenge": "这张图片里有一只猫",
+                "minScore": 70,
+                "maxScore": 100,
+                "maxAttempts": 3,
+                "saveImages": true,
+                "score": 85,
+                "attempt": 1,
+                "saved": true
+              }
+            }
+          ],
+          "expect": {
+            "add": 100,
+            "settled": 100,
+            "player": {
+              "state": {
+                "used": [
+                  "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+                ]
+              },
+              "view": {
+                "summary": "挑战通过",
+                "data": {
+                  "v": 1,
+                  "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+                  "score": 85,
+                  "remaining": 2,
+                  "passed": true,
+                  "reward": 100
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "核验超时恢复后可提交同一图片结果",
+      "steps": [
+        {
+          "who": "小明",
+          "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+          "fetch": [
+            {
+              "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10001",
+              "error": "timeout"
+            }
+          ],
+          "expect": {
+            "add": 0,
+            "settle": false,
+            "settled": null,
+            "player": {
+              "state": null,
+              "view": null
+            }
+          }
+        },
+        {
+          "who": "小明",
+          "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+          "fetch": [
+            {
+              "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10001",
+              "json": {
+                "found": true,
+                "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+                "user": "10001",
+                "hongbao": "test",
+                "challenge": "这张图片里有一只猫",
+                "minScore": 70,
+                "maxScore": 100,
+                "maxAttempts": 3,
+                "saveImages": true,
+                "score": 85,
+                "attempt": 1,
+                "saved": true
+              }
+            }
+          ],
+          "expect": {
+            "add": 100,
+            "settled": 100,
+            "player": {
+              "state": {
+                "used": [
+                  "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+                ]
+              },
+              "view": {
+                "summary": "挑战通过",
+                "data": {
+                  "v": 1,
+                  "resultId": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+                  "score": 85,
+                  "remaining": 2,
+                  "passed": true,
+                  "reward": 100
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ]
 }

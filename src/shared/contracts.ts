@@ -9,6 +9,9 @@ export interface ChallengeConfig {
   maxScore: number
   maxAttempts: number
   saveImages: boolean
+  reward: number
+  scoreReward: boolean
+  minReward: number
 }
 
 export const DEFAULT_CHALLENGE: ChallengeConfig = {
@@ -17,6 +20,9 @@ export const DEFAULT_CHALLENGE: ChallengeConfig = {
   maxScore: 100,
   maxAttempts: 3,
   saveImages: true,
+  reward: 100,
+  scoreReward: false,
+  minReward: 1,
 }
 
 export interface PublicConfig {
@@ -36,6 +42,29 @@ export interface UploadResult {
   attempt: number
   remaining: number
   saved: boolean
+  nsfwScore: number | null
+  width: number | null
+  height: number | null
+}
+
+export interface GalleryItem {
+  id: string
+  score: number
+  nsfwScore: number | null
+  saved: boolean
+  createdAt: number
+  own: boolean
+  width: number | null
+  height: number | null
+  passed: boolean
+}
+
+export interface GalleryResponse {
+  items: GalleryItem[]
+  next: string | null
+  visibility: 'misses' | 'all'
+  remaining: number
+  latest: UploadResult | null
 }
 
 export interface ApiError {

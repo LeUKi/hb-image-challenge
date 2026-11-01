@@ -25,8 +25,9 @@ export function parseChallenge(params: Record<string, unknown>, origin: string):
 export function challengeFromActivity(data: unknown, identity: Identity, origin: string): ChallengeConfig {
   if (!record(data) || !record(data.activity)) throw new ApiFailure(502, 'activity_unavailable', '无法读取红包的挑战配置')
   const activity = data.activity
-  if (activity.id !== identity.hongbao || !record(activity.author) || activity.author.id !== identity.sender) {
-    throw new ApiFailure(403, 'wrong_activity', '红包作者与当前服务不匹配')
+  // verifyIdentity binds the signed sender to OWNER_ID; public author.id is an unrelated internal UUID.
+  if (activity.id !== identity.hongbao) {
+    throw new ApiFailure(403, 'wrong_activity', '红包与当前身份不匹配')
   }
   if (activity.status !== 'active' || activity.stopped === true || !record(activity.judge) || activity.judge.paused === true || activity.judge.stopped === true) {
     throw new ApiFailure(409, 'activity_inactive', '这个红包尚未开放、已结束或已暂停')
@@ -48,7 +49,7 @@ export async function loadChallenge(env: AppEnv, identity: Identity, origin: str
   try {
     response = await fetch(`${platformSite(env)}/api/activities/${encodeURIComponent(identity.hongbao)}`, {
       headers: { Accept: 'application/json' },
-      redirect: 'error',
+      redirect: 'manual',
       signal: AbortSignal.timeout(8000),
     })
   } catch { throw new ApiFailure(502, 'activity_unavailable', '红包站暂时无法连接，请稍后重试') }

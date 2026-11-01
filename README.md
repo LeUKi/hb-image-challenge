@@ -6,7 +6,34 @@
 
 [使用图片挑战发红包](https://hb.lafi.sh/new?judge=0f06222c-e8b2-4683-89d9-ae8900e66cea) · [判定器代码](judge/judge.js) · [配套测试](judge/tests.json)
 
-先部署自己的 Cloudflare 服务，再点击“使用图片挑战发红包”，在表单中填入部署后的服务根地址和挑战规则。可以直接复用已发布的判定器，无需自行发布一份。
+先部署自己的 Cloudflare 服务，应用参数只需填写 `OWNER_ID`（你的 LINUX DO 数字用户 ID）。部署后点击“使用图片挑战发红包”，填入服务根地址和挑战规则即可，无需自行发布判定器。
+
+## 部署到自己的 Cloudflare
+
+1. 点击上面的按钮，登录 Cloudflare 并连接自己的 GitHub。模板会声明 AI、R2 和 D1 绑定，由官方部署流程创建、绑定资源。首次使用 R2 时可能需要先完成 Cloudflare 的账户开通流程。
+2. 只需填写一个应用参数：`OWNER_ID`，值为自己的 **LINUX DO 数字用户 ID**。服务默认连接 `https://hb.lafi.sh`，空 ID 的服务拒绝上传。
+3. 如果 Cloudflare 默认勾选了 **启用预览构建（Enable Preview Builds）**，请取消；**使用 Cloudflare Access 保护**无需启用。高级设置里的构建和部署命令保持默认，然后开始部署。
+4. 点击[使用图片挑战发红包](https://hb.lafi.sh/new?judge=0f06222c-e8b2-4683-89d9-ae8900e66cea)，已选好图片挑战判定器。在“服务地址”中填入部署得到的根地址，例如 `https://你的服务.workers.dev/`，再设置挑战描述、最低/最高匹配度、每人次数（1–10，默认 3）、是否保存图片和成功奖励。
+
+模板只声明 `OWNER_ID` 这一个普通应用变量，不要求填写 AI Token、R2 密钥或站点地址。AI、R2、D1 由部署流程创建并绑定；部署命令会构建 SSR、发布 Worker 并执行数据库迁移。`database_id` 的全零值是模板占位，官方部署流程会替换为实际资源 ID。
+
+模板显式设置了 `preview_urls: false`，关闭版本预览地址。但 Cloudflare 的“启用预览构建”是平台的分支构建开关，当前没有公开的 Deploy Button 模板设置可将它默认取消；上面的第 3 步仍需在 Cloudflare 表单中完成。二者不能互相替代。官方说明：[部署按钮](https://developers.cloudflare.com/workers/platform/deploy-buttons/)、[预览构建开关](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/#configure-preview-builds)。
+
+正式的 `workers.dev` 地址已通过 `workers_dev: true` 显式开启，构建后的部署配置也保留此值，正常完成部署后无需逐个手动启用。Cloudflare 的 **Settings → Domains & Routes** 中，版本预览地址关闭是预期行为；若正式 `workers.dev` 一行仍显示禁用，请检查这次部署是否成功、采用的提交和配置是否正确。首次使用 Workers 的账户可能还需按提示注册账户级 `workers.dev` 子域名。详见 [workers.dev 官方说明](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/)。
+
+本地配置示例放在 `docs/local-worker-config.example`。仅开发联调需要时，可在本地 `.dev.vars` 用 `HB_SITE` 指向官方模拟器；它不在默认部署表单中展示。不要为普通变量添加根目录 `.dev.vars.example` 或 `.env.example` 声明，否则 Deploy to Cloudflare 会将同名变量再次识别为 secrets。
+
+通过 CLI 部署时，需要先创建资源并填写数据库 ID：
+
+```sh
+npx wrangler login
+npx wrangler r2 bucket create hb-image-challenge-images
+npx wrangler d1 create hb-image-challenge
+# 将命令返回的真实 database_id 填入 wrangler.jsonc，并设置 OWNER_ID。
+npm run deploy
+```
+
+上面的发红包链接使用已发布的公共判定器。需要自行修改和发布判定器时，使用 [judge/judge.js](judge/judge.js) 和 [judge/tests.json](judge/tests.json)；更新 Cloudflare 服务不会自动更新红包站保存的判定器代码。这个仓库的代码准备和本地验证，不代表生产 AI、R2、红包领取或官方部署按钮已经端到端实测。
 
 ## 技术栈
 
@@ -39,27 +66,6 @@ npm run check
 
 检查包括 ESLint、TypeScript、服务端边界测试和实际 Worker SSR 构建。测试中的 AI 是接口替身，不产生真实模型调用。
 
-## 部署到自己的 Cloudflare
-
-1. 点击上面的按钮，登录 Cloudflare 并连接自己的 GitHub。模板会声明 AI、R2 和 D1 绑定，由官方部署流程创建、绑定资源。首次使用 R2 时可能需要先完成 Cloudflare 的账户开通流程。
-2. 在部署配置或 Worker 的 **Settings → Variables and Secrets** 设置 `OWNER_ID` 为自己的 **LINUX DO 数字用户 ID**，保持 `HB_SITE=https://hb.lafi.sh`。空 ID 的服务拒绝上传。
-3. 部署命令会构建 SSR 应用、发布 Worker，再执行 D1 migrations。`database_id` 的全零值是模板占位；官方部署流程会用实际资源 ID 替换。自己用 CLI 部署时，请先创建数据库并替换为实际 ID。
-4. 点击[使用图片挑战发红包](https://hb.lafi.sh/new?judge=0f06222c-e8b2-4683-89d9-ae8900e66cea)，已选好图片挑战判定器。在“服务地址”中填入部署得到的根地址，例如 `https://你的服务.workers.dev/`，再设置挑战描述、最低/最高匹配度、每人次数（1–10，默认 3）、是否保存图片和成功奖励。
-
-`OWNER_ID` 和 `HB_SITE` 都是普通运行变量，统一在 `wrangler.jsonc.vars` 声明。不要把它们再放入根目录的 `.dev.vars.example` 或 `.env.example`：Deploy to Cloudflare 会把这两类文件里的键识别为 secrets，导致部署表单重复出现一组遮罩输入。本地配置示例放在 `docs/local-worker-config.example`，不会作为部署 secrets 读取。
-
-CLI 首次部署：
-
-```sh
-npx wrangler login
-npx wrangler r2 bucket create hb-image-challenge-images
-npx wrangler d1 create hb-image-challenge
-# 将命令返回的真实 database_id 填入 wrangler.jsonc，并设置 OWNER_ID。
-npm run deploy
-```
-
-上面的发红包链接使用已发布的公共判定器。需要自行修改和发布判定器时，使用 [judge/judge.js](judge/judge.js) 和 [judge/tests.json](judge/tests.json)；更新 Cloudflare 服务不会自动更新红包站保存的判定器代码。这个仓库的代码准备和本地验证，不代表生产 AI、R2、红包领取或官方部署按钮已经端到端实测。
-
 ## 数据流与边界
 
 1. 附带网页通过 `hb.identity({ nonce })` 获取签名 JWT。
@@ -75,7 +81,7 @@ npm run deploy
 
 ## 当前范围
 
-实现与验证记录见 [docs/VALIDATION.md](docs/VALIDATION.md)。本地已通过 18 项后端测试、22 项官方判定器测试、SSR 构建和 1440/390/320px 浏览器检查；官方模拟器的 SDK 与三种布局截图也已通过。
+实现与验证记录见 [docs/VALIDATION.md](docs/VALIDATION.md)。本地已通过 25 项后端测试、22 项官方判定器测试、SSR 构建和 1440/390/320px 浏览器检查；官方模拟器的 SDK 与三种布局截图也已通过。
 
 实际 Cloudflare 模型精度、免费档 CPU、Cloudflare 首次资源开通、红包站生产 JWT/领取和一键部署流程，需要在真实账号上单独验证。当前官方模拟器不提供服务端读取规则所需的公开活动接口，因此模拟器截图不等于图片上传、真实 AI 和发奖的完整联调；后端不会为模拟器放宽可信规则校验。
 

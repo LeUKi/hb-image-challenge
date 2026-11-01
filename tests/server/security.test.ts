@@ -1,7 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest'
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import type { JWTVerifyGetKey, JWTPayload } from 'jose'
-import { verifyIdentity } from '../../src/server/auth'
+import type { AppEnv } from '../../src/server/env'
+import { platformSite, verifyIdentity } from '../../src/server/auth'
 import { challengeFromActivity, parseChallenge } from '../../src/server/challenge'
 import { validateImage } from '../../src/server/images'
 import { clefInput, parseScore } from '../../src/server/ai'
@@ -15,13 +16,27 @@ describe('platform identities', () => {
     privateKey = pair.privateKey
     localKeys = createLocalJWKSet({ keys: [{ ...await exportJWK(pair.publicKey), kid: 'test', alg: 'ES256' }] })
   })
-  async function token(kind = 'page', changes: JWTPayload = {}): Promise<string> {
+  async function token(kind = 'page', changes: JWTPayload = {}, site = environment.HB_SITE): Promise<string> {
     return new SignJWT({ ...identity, ...changes }).setProtectedHeader({ alg: 'ES256', kid: 'test' })
-      .setIssuer(kind === 'page' ? environment.HB_SITE : `${environment.HB_SITE}/judge`)
+      .setIssuer(kind === 'page' ? site : `${site}/judge`)
       .setAudience('https://challenge.example.com').setIssuedAt().setExpirationTime('10m').sign(privateKey)
   }
   it('accepts a signed player bound to the author, activity and service', async () => {
     expect((await verifyIdentity(await token(), 'page', request, environment, localKeys)).sub).toBe('42')
+  })
+  it('defaults to the official site without trusting a different issuer', async () => {
+    const defaults: Pick<AppEnv, 'OWNER_ID' | 'HB_SITE'> = { OWNER_ID: environment.OWNER_ID }
+    expect(platformSite(defaults)).toBe('https://hb.lafi.sh')
+    for (const kind of ['page', 'judge'] as const) {
+      await expect(verifyIdentity(await token(kind, {}, 'https://hb.lafi.sh'), kind, request, defaults, localKeys)).resolves.toMatchObject({ sender: environment.OWNER_ID })
+      await expect(verifyIdentity(await token(kind), kind, request, defaults, localKeys)).rejects.toMatchObject({ status: 401 })
+    }
+  })
+  it('keeps explicit platform overrides strict and supports a local simulator', () => {
+    expect(platformSite({ HB_SITE: 'http://127.0.0.1:8850' })).toBe('http://127.0.0.1:8850')
+    for (const HB_SITE of ['', 'http://hb.lafi.sh', 'https://hb.lafi.sh/', 'https://hb.lafi.sh/path', 'https://user:pass@hb.lafi.sh']) {
+      expect(() => platformSite({ HB_SITE })).toThrow()
+    }
   })
   it('separates judge and page identities', async () => {
     await expect(verifyIdentity(await token(), 'judge', request, environment, localKeys)).rejects.toMatchObject({ status: 401 })
@@ -39,11 +54,11 @@ describe('platform identities', () => {
 })
 
 describe('trusted author configuration', () => {
-  it('reads the actual published platform parameter shape', () => {
+  it('binds published rules to the signed packet while author metadata uses an internal UUID', () => {
     expect(challengeFromActivity(activity, identity, 'https://challenge.example.com')).toMatchObject({ maxAttempts: 3, minScore: 70 })
   })
-  it('rejects a different author, closed packet and mismatched service', () => {
-    expect(() => challengeFromActivity({ activity: { ...activity.activity, author: { id: '99999' } } }, identity, 'https://challenge.example.com')).toThrow()
+  it('rejects a different packet, closed packet and mismatched service', () => {
+    expect(() => challengeFromActivity({ activity: { ...activity.activity, id: 'different-packet' } }, identity, 'https://challenge.example.com')).toThrow()
     expect(() => challengeFromActivity({ activity: { ...activity.activity, status: 'ended' } }, identity, 'https://challenge.example.com')).toThrow()
     expect(() => parseChallenge({ ...params, server: 'https://other.example.com/' }, 'https://challenge.example.com')).toThrow()
   })

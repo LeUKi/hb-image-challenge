@@ -36,7 +36,7 @@ export const environment = { OWNER_ID: '10000', HB_SITE: 'https://hb.example.com
 export const params = { server: 'https://challenge.example.com/', challenge: '这是一只猫吗？', minScore: 70, maxScore: 100, maxAttempts: 3, saveImages: true }
 export const activity = {
   activity: {
-    id: identity.hongbao, status: 'active', author: { id: identity.sender },
+    id: identity.hongbao, status: 'active', author: { id: '11111111-2222-4333-8444-555555555555' },
     judge: { params: Object.entries(params).map(([key, value]) => ({ param: { key }, value })) },
   },
 }

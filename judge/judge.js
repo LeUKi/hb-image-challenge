@@ -15,7 +15,7 @@ export const meta = {
 }
 export const hongbao = {
   pageAutoOpen: true,
-  note: '[打开图片挑战，选择你的答案](#附带网页)\n上传图片等待评分，再提交结果。每人次数由作者设置，最多 10 次。分数表示 AI 的匹配判断，不是准确率。',
+  note: '[打开图片挑战，上传你的图片](#附带网页)\n上传图片等待评分，再提交结果。每人次数由作者设置，最多 10 次。分数表示 AI 的匹配判断，不是准确率。',
 }
 export function check(values) {
   const errors = []

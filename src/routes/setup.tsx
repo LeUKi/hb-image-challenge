@@ -24,7 +24,7 @@ function SetupPage() {
     defaultValues: { ownerId: '' },
     onSubmit: async ({ value }) => {
       try {
-        await navigator.clipboard.writeText(`OWNER_ID=${value.ownerId.trim()}\nHB_SITE=https://hb.lafi.sh\n`)
+        await navigator.clipboard.writeText(`OWNER_ID=${value.ownerId.trim()}\n`)
         setCopied(true)
         setCopyError('')
       } catch { setCopyError('复制未完成，请手动把数字 ID 填入本地 .dev.vars 的 OWNER_ID。') }
@@ -42,12 +42,12 @@ function SetupPage() {
       <div className="setup-layout">
         <div className="setup-content">
           <section className="setup-section">
-            <h2><span className="step-number" aria-hidden="true">1</span>设置作者信息</h2>
-            <p>点击部署按钮并连接 GitHub，在 Cloudflare 的表单中填写以下两个普通环境变量：</p>
+            <h2><span className="step-number" aria-hidden="true">1</span>填写作者 ID 并部署</h2>
+            <p>点击部署按钮并连接 GitHub。应用参数只需填写你的 LINUX DO 数字用户 ID，服务默认连接正式红包站。</p>
             <dl className="mt-5 space-y-5 rounded-xl border border-line bg-white p-5">
               <div><dt className="font-mono font-semibold">OWNER_ID</dt><dd className="mt-1 text-muted">你的 LINUX DO 数字用户 ID。服务只处理这个作者发出的红包。</dd></div>
-              <div><dt className="font-mono font-semibold">HB_SITE</dt><dd className="mt-1 text-muted">红包站地址，保留默认值 <code>https://hb.lafi.sh</code> 即可。</dd></div>
             </dl>
+            <p className="mt-4">Cloudflare 的“启用预览构建”如已勾选，请取消；Access 无需开启，高级设置中的构建和部署命令保持默认。</p>
             <details className="mt-5">
               <summary className="min-h-11 py-2 font-medium">本地开发配置</summary>
               <p className="mt-3">在本地运行时，将下面生成的配置写入 <code>.dev.vars</code> 文件。</p>

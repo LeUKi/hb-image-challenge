@@ -12,8 +12,9 @@ export interface Identity extends JWTPayload {
 }
 
 export function platformSite(env: Pick<AppEnv, 'HB_SITE'>): string {
-  const url = new URL(env.HB_SITE)
-  if (url.origin !== env.HB_SITE || (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) {
+  const site = env.HB_SITE ?? 'https://hb.lafi.sh'
+  const url = new URL(site)
+  if (url.origin !== site || (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) {
     throw new ApiFailure(503, 'invalid_site', '红包站地址配置无效')
   }
   return url.origin

@@ -1,0 +1,540 @@
+{
+  "$schema": "./tests.schema.json",
+  "params": {
+    "server": "https://images.example.com/",
+    "challenge": "这张图片里有一只猫",
+    "minScore": 70,
+    "maxScore": 100,
+    "maxAttempts": 3,
+    "saveImages": true,
+    "reward": 100
+  },
+  "tests": [
+    {
+      "name": "区间内通过并立即结算",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 100,
+        "settled": 100
+      }
+    },
+    {
+      "name": "最低边界包含70",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 70,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "settled": 100
+      }
+    },
+    {
+      "name": "最高边界包含100",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 100,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "settled": 100
+      }
+    },
+    {
+      "name": "低于区间保留下一次机会",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 69.9,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "最后一次未通过结算退出",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 40,
+            "attempt": 3,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "settled": 0
+      }
+    },
+    {
+      "name": "另一个挑战的结果不能复用",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "是一只狗",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "另一个玩家的结果不能领取",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10001",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "不同下限不能复用",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 0,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "不同上限不能复用",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 90,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "不同次数不能复用",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 10,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "不同保存策略不能复用",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": false,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "服务返回别的结果编号",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "aaaaaaaa-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "分数超过100无效",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 101,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "字符串分数无效",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": "85",
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "次数超过作者上限无效",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 4,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "次数小数无效",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": true,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1.5,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "未找到结果不发奖",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "json": {
+            "found": false,
+            "id": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+            "user": "10000",
+            "hongbao": "test",
+            "challenge": "这张图片里有一只猫",
+            "minScore": 70,
+            "maxScore": 100,
+            "maxAttempts": 3,
+            "saveImages": true,
+            "score": 85,
+            "attempt": 1,
+            "saved": true
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "服务500不发奖",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "status": 500,
+          "json": {
+            "error": "unavailable"
+          }
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "服务超时不发奖",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "error": "timeout"
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "服务连不上不发奖",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "fetch": [
+        {
+          "url": "https://images.example.com/api/results/d09e3c2d-1234-4321-8888-7e2432fb43c0?user=10000",
+          "error": "unreachable"
+        }
+      ],
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "手写文本不能绕过上传",
+      "input": "85",
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    },
+    {
+      "name": "已提交结果不会重复核验",
+      "input": "d09e3c2d-1234-4321-8888-7e2432fb43c0",
+      "players": {
+        "tester": {
+          "state": {
+            "used": [
+              "d09e3c2d-1234-4321-8888-7e2432fb43c0"
+            ]
+          }
+        }
+      },
+      "expect": {
+        "add": 0,
+        "settle": false
+      }
+    }
+  ]
+}

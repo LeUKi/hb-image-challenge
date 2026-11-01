@@ -10,6 +10,7 @@ export const Route = createFileRoute('/setup')({
 })
 
 const DEPLOY_URL = 'https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/hb-image-challenge'
+const CREATE_HONGBAO_URL = 'https://hb.lafi.sh/new?judge=0f06222c-e8b2-4683-89d9-ae8900e66cea'
 const resources = [
   { icon: Sparkles, title: 'AI 评分', detail: '使用你账户的 Clef Omni 模型额度。' },
   { icon: HardDrive, title: '图片保存', detail: '图片存入私有 R2，按红包选择是否保存。' },
@@ -67,7 +68,8 @@ function SetupPage() {
           </section>
           <section className="setup-section">
             <h2><span className="step-number" aria-hidden="true">2</span>在红包站创建挑战</h2>
-            <p>使用图片挑战判定器，填入部署后的服务地址，例如 <code>https://你的服务.workers.dev/</code>。再填写挑战描述、目标评分区间、每人上传次数和是否保存图片。</p>
+            <p>点击下方按钮，使用已发布的图片挑战判定器。填入部署后的服务根地址，例如 <code>https://你的服务.workers.dev/</code>，再填写挑战描述、目标评分区间、每人上传次数、是否保存图片和成功奖励。</p>
+            <a href={CREATE_HONGBAO_URL} target="_blank" rel="noreferrer" className="button-secondary mt-4">使用此判定器发红包<ArrowRight size={18} aria-hidden="true" /></a>
             <p className="mt-3">每人默认 3 次，最多 10 次。R2 会随服务一起部署，是否保存图片可按每个红包调整。</p>
           </section>
           <section className="setup-section">

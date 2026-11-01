@@ -4,6 +4,10 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/hb-image-challenge)
 
+[使用图片挑战发红包](https://hb.lafi.sh/new?judge=0f06222c-e8b2-4683-89d9-ae8900e66cea) · [判定器代码](judge/judge.js) · [配套测试](judge/tests.json)
+
+先部署自己的 Cloudflare 服务，再点击“使用图片挑战发红包”，在表单中填入部署后的服务根地址和挑战规则。可以直接复用已发布的判定器，无需自行发布一份。
+
 ## 技术栈
 
 - **TanStack Start + Router**：React 服务端渲染、文件路由，Cloudflare Workers 官方 Vite adapter。
@@ -40,7 +44,7 @@ npm run check
 1. 点击上面的按钮，登录 Cloudflare 并连接自己的 GitHub。模板会声明 AI、R2 和 D1 绑定，由官方部署流程创建、绑定资源。首次使用 R2 时可能需要先完成 Cloudflare 的账户开通流程。
 2. 在部署配置或 Worker 的 **Settings → Variables and Secrets** 设置 `OWNER_ID` 为自己的 **LINUX DO 数字用户 ID**，保持 `HB_SITE=https://hb.lafi.sh`。空 ID 的服务拒绝上传。
 3. 部署命令会构建 SSR 应用、发布 Worker，再执行 D1 migrations。`database_id` 的全零值是模板占位；官方部署流程会用实际资源 ID 替换。自己用 CLI 部署时，请先创建数据库并替换为实际 ID。
-4. 在红包站使用 `judge/judge.js` 和对应的测试文件，填入部署得到的服务地址。设置挑战描述、最低/最高匹配度、每人次数（1–10，默认 3）和是否保存图片。
+4. 点击[使用图片挑战发红包](https://hb.lafi.sh/new?judge=0f06222c-e8b2-4683-89d9-ae8900e66cea)，已选好图片挑战判定器。在“服务地址”中填入部署得到的根地址，例如 `https://你的服务.workers.dev/`，再设置挑战描述、最低/最高匹配度、每人次数（1–10，默认 3）、是否保存图片和成功奖励。
 
 `OWNER_ID` 和 `HB_SITE` 都是普通运行变量，统一在 `wrangler.jsonc.vars` 声明。不要把它们再放入根目录的 `.dev.vars.example` 或 `.env.example`：Deploy to Cloudflare 会把这两类文件里的键识别为 secrets，导致部署表单重复出现一组遮罩输入。本地配置示例放在 `docs/local-worker-config.example`，不会作为部署 secrets 读取。
 
@@ -54,7 +58,7 @@ npx wrangler d1 create hb-image-challenge
 npm run deploy
 ```
 
-部署网页与发布红包站判定器是两个操作。这个仓库的代码准备和本地验证，不代表生产 AI、R2、红包领取或官方部署按钮已经端到端实测。
+上面的发红包链接使用已发布的公共判定器。需要自行修改和发布判定器时，使用 [judge/judge.js](judge/judge.js) 和 [judge/tests.json](judge/tests.json)；更新 Cloudflare 服务不会自动更新红包站保存的判定器代码。这个仓库的代码准备和本地验证，不代表生产 AI、R2、红包领取或官方部署按钮已经端到端实测。
 
 ## 数据流与边界
 

@@ -6,6 +6,7 @@ import { loadChallenge, loadChallengeContext } from './challenge'
 import { ApiFailure } from './errors'
 import { imageHash, readImage, validateImage } from './images'
 import { scoreImage } from './ai'
+import { applyLikeBatch, GALLERY_VISIBILITY_SQL, galleryLikeCounts, galleryLikeReceipt, galleryScopeBindings, readGallerySync } from './likes'
 import { consumeNonce, createNonce, existingAttempt, galleryGrant, hasGalleryGrant, reserveAttempt } from './store'
 import type { Attempt } from './store'
 import type { Identity } from './auth'
@@ -129,6 +130,7 @@ function decodeCursor(value: string | null): [number, string] | null {
 
 async function gallery(request: Request, env: AppEnv): Promise<Response> {
   const identity = await verifyIdentity(pageToken(request), 'page', request, env)
+  const sync = request.method === 'POST' ? await readGallerySync(request) : {}
   const url = new URL(request.url)
   const context = await loadChallengeContext(env, identity, url.origin)
   const all = await fullGallery(request, env, identity, context.ended)
@@ -136,24 +138,25 @@ async function gallery(request: Request, env: AppEnv): Promise<Response> {
   const size = url.searchParams.get('limit') ?? '24'
   if (!/^\d{1,2}$/.test(size) || Number(size) < 1 || Number(size) > 60) throw new ApiFailure(400, 'invalid_limit', '每次最多读取 60 张图片')
   const limit = Number(size)
-  const bindings: (string | number)[] = [identity.hongbao, identity.sub, identity.sub === env.OWNER_ID ? 1 : 0, all ? 1 : 0]
-  let sql = `SELECT * FROM image_attempts WHERE hongbao = ? AND status = 'ready' AND score IS NOT NULL
-    AND (user_id = ? OR ? = 1 OR (gallery_shared = 1 AND (? = 1
-      OR score < CAST(json_extract(config_json, '$.minScore') AS REAL)
-      OR score > CAST(json_extract(config_json, '$.maxScore') AS REAL))))`
+  const scope = { identity, owner: identity.sub === env.OWNER_ID, all }
+  const likeReceipt = sync.batch ? await applyLikeBatch(env.DB, scope, sync.batch)
+    : sync.receiptFor ? await galleryLikeReceipt(env.DB, scope, sync.receiptFor) : undefined
+  const bindings: (string | number)[] = [...galleryScopeBindings(scope)]
+  let sql = `SELECT a.* FROM image_attempts AS a WHERE ${GALLERY_VISIBILITY_SQL}`
   if (cursor) {
-    sql += ' AND (created_at < ? OR (created_at = ? AND id < ?))'
+    sql += ' AND (a.created_at < ? OR (a.created_at = ? AND a.id < ?))'
     bindings.push(cursor[0], cursor[0], cursor[1])
   }
-  sql += ' ORDER BY created_at DESC, id DESC LIMIT ?'
+  sql += ' ORDER BY a.created_at DESC, a.id DESC LIMIT ?'
   bindings.push(limit + 1)
   const records = await env.DB.prepare(sql).bind(...bindings).all<Attempt>()
   const page = records.results.slice(0, limit)
+  const likeCounts = await galleryLikeCounts(env.DB, scope, [...page.map(attempt => attempt.id), ...(sync.watch ?? [])])
   const items: GalleryItem[] = page.map(attempt => ({
     id: attempt.id, score: attempt.score!, nsfwScore: attempt.nsfw_score,
     saved: attempt.image_key !== null, createdAt: attempt.created_at,
     own: attempt.user_id === identity.sub, width: attempt.image_width,
-    height: attempt.image_height, passed: passed(attempt),
+    height: attempt.image_height, passed: passed(attempt), likes: likeCounts[attempt.id] ?? 0,
   }))
   const remaining = await remainingAttempts(env.DB, identity, context.config.maxAttempts)
   const latest = await env.DB.prepare("SELECT * FROM image_attempts WHERE hongbao = ? AND user_id = ? AND status = 'ready' ORDER BY attempt_no DESC LIMIT 1")
@@ -162,6 +165,7 @@ async function gallery(request: Request, env: AppEnv): Promise<Response> {
     items, next: records.results.length > limit ? encodeCursor(page[page.length - 1]) : null,
     visibility: all ? 'all' : 'misses', remaining,
     latest: latest ? uploadResult(latest, remaining) : null,
+    likeCounts, ...(likeReceipt ? { likeReceipt } : {}),
   }
   return json(response)
 }
@@ -198,7 +202,7 @@ async function route(request: Request, env: AppEnv): Promise<Response> {
     return json({ nonce: await createNonce(env.DB) })
   }
   if (url.pathname === '/api/upload' && request.method === 'POST') return upload(request, env)
-  if (url.pathname === '/api/gallery' && request.method === 'GET') return gallery(request, env)
+  if (url.pathname === '/api/gallery' && (request.method === 'GET' || request.method === 'POST')) return gallery(request, env)
   const resultMatch = /^\/api\/results\/([a-f0-9-]{36})$/.exec(url.pathname)
   if (resultMatch && request.method === 'GET') return judgeResult(request, env, resultMatch[1])
   const imageMatch = /^\/api\/images\/([a-f0-9-]{36})$/.exec(url.pathname)

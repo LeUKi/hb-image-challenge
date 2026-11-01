@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { EyeOff, ImageOff, Images, LoaderCircle, RefreshCw } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
+import { EyeOff, Heart, ImageOff, Images, LoaderCircle, RefreshCw } from 'lucide-react'
 import { assignGalleryColumns, captureGalleryAnchor, isCovered, releaseGalleryAnchorSpace, restoreGalleryAnchor } from '../lib/gallery'
 import type { GalleryAnchor } from '../lib/gallery'
 import { PrivateImageCache } from '../lib/private-images'
@@ -32,10 +33,25 @@ function PrivateImage({ item, cache, eager = false }: { item: GalleryItem; cache
   </span>
 }
 
-export function Gallery({ items, next, visibility, isLoading, isRefreshing, error, loadingMore, onLoadMore, onRefresh, showNsfw, getHeaders }: {
+function LikeButton({ count, pending, disabled, onLike, detail = false }: {
+  count: number; pending: boolean; disabled: boolean; onLike: () => void; detail?: boolean
+}) {
+  const reducedMotion = useReducedMotion()
+  const formatted = new Intl.NumberFormat('zh-CN', { notation: count >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(count)
+  return <motion.button type="button" className={detail ? 'detail-like' : 'gallery-like'} data-pending={pending}
+    disabled={disabled} aria-label={`点赞，当前 ${count} 次`} title="可以连续点赞，后台定时同步"
+    whileTap={reducedMotion ? undefined : { scale: .88 }} transition={{ type: 'spring', stiffness: 500, damping: 22 }}
+    onClick={event => { event.stopPropagation(); onLike() }}>
+    <Heart size={20} aria-hidden="true" fill={pending ? 'currentColor' : 'none'} /><span aria-hidden="true">{formatted}</span>
+  </motion.button>
+}
+
+export function Gallery({ items, next, visibility, isLoading, isRefreshing, error, loadingMore, onLoadMore, onRefresh, showNsfw, getHeaders, likeCounts, pendingLikes, canLike, onLike, onWatch }: {
   items: GalleryItem[]; next: string | null; visibility: 'misses' | 'all'; isLoading: boolean; isRefreshing: boolean
   error: string | null; loadingMore: boolean; onLoadMore: () => void; onRefresh: () => void
   showNsfw: boolean; getHeaders: () => Promise<Headers>
+  likeCounts: Record<string, number>; pendingLikes: Record<string, number>; canLike: boolean
+  onLike: (id: string) => void; onWatch: (ids: string[]) => void
 }) {
   const root = useRef<HTMLDivElement>(null)
   const anchor = useRef<GalleryAnchor | null>(null)
@@ -53,6 +69,20 @@ export function Gallery({ items, next, visibility, isLoading, isRefreshing, erro
     window.addEventListener('scroll', releaseSpace, { passive: true })
     return () => window.removeEventListener('scroll', releaseSpace)
   }, [])
+  useEffect(() => {
+    if (!root.current || !('IntersectionObserver' in window)) { onWatch(items.slice(0, 200).map(item => item.id)); return }
+    const visible = new Set<string>()
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        const id = (entry.target as HTMLElement).dataset.galleryId!
+        if (entry.isIntersecting) visible.add(id)
+        else visible.delete(id)
+      }
+      onWatch([...visible])
+    }, { rootMargin: '400px' })
+    for (const node of root.current.querySelectorAll('[data-gallery-id]')) observer.observe(node)
+    return () => { observer.disconnect(); onWatch([]) }
+  }, [items, onWatch, layout])
   useLayoutEffect(() => {
     if (layout.items === items) return
     anchor.current = root.current ? captureGalleryAnchor(root.current) : null
@@ -84,6 +114,7 @@ export function Gallery({ items, next, visibility, isLoading, isRefreshing, erro
           </button> : <button type="button" className="score-only-record" onClick={() => setSelected(item)} aria-label={`查看评分 ${item.score.toFixed(1)}% 的记录`}>
             <ImageOff size={24} aria-hidden="true" /><strong data-passed={item.passed}>{item.score.toFixed(1)}%</strong><span>仅评分记录</span>
           </button>}
+          <LikeButton count={likeCounts[item.id] ?? item.likes ?? 0} pending={Boolean(pendingLikes[item.id])} disabled={!canLike} onLike={() => onLike(item.id)} />
         </article>
       })}
     </div>)}</div> : <div className="gallery-empty">
@@ -103,6 +134,7 @@ export function Gallery({ items, next, visibility, isLoading, isRefreshing, erro
           {selectedCovered && <span className="nsfw-cover"><EyeOff size={26} aria-hidden="true" /><strong>NSFW</strong><span>点击查看</span></span>}
         </button> : <p className="text-muted">本次只保存评分记录，没有保存图片。</p>}
         <div className="image-detail-score"><span>匹配评分</span><strong data-passed={selected.passed}>{selected.score.toFixed(1)}%</strong></div>
+        <LikeButton count={likeCounts[selected.id] ?? selected.likes ?? 0} pending={Boolean(pendingLikes[selected.id])} disabled={!canLike} onLike={() => onLike(selected.id)} detail />
         <p className="text-muted">Clef Omni · Cloudflare Workers AI</p>
         {selected.nsfwScore === null && <p className="text-muted mt-3">未取得敏感提示分，默认遮罩展示。</p>}
       </>}

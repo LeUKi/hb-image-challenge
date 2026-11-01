@@ -76,12 +76,14 @@ function ChallengePage() {
   }, [setSession])
   const getHeaders = useCallback(async () => {
     if (!identity) throw new Error('请从红包页打开后查看作品')
+    const expectedUser = verifiedIdentity?.key === identity.cacheKey ? verifiedIdentity.userId : identity.subject()
     const value = await identity.get()
     acceptIdentity(identity, value)
+    if (expectedUser && value.user.id !== expectedUser) throw new Error('登录账号已切换，请稍后继续')
     return galleryHeaders(value.token, grant)
-  }, [identity, grant, acceptIdentity])
+  }, [identity, grant, acceptIdentity, verifiedIdentity])
   const galleryScope = `${identityScope}:${identity?.cacheKey ?? 'anonymous'}:${identityVerified ? verifiedIdentity!.userId : `checking-${identity?.version ?? 0}`}`
-  const gallery = useGallery({ scope: galleryScope, grant,
+  const gallery = useGallery({ scope: galleryScope, actorScope: identityVerified ? trustedWorkspace : '', grant,
     enabled: connected && Boolean(session.me?.signedIn) && session.participantStatus === 'ready' && Boolean(config.data?.ownerConfigured), getHeaders })
   const refetchGallery = gallery.refresh
   useEffect(() => { refreshGallery.current = () => { void refetchGallery() } }, [refetchGallery])
@@ -469,7 +471,7 @@ function ChallengePage() {
           <AnimatePresence>{instructions && <motion.aside className="first-use-guide" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={transition} aria-label="首次玩法引导"><p>选择图片 → 查看评分 → 提交结果</p><p>分数落在目标区间，即可提交领取。</p><button type="button" className="text-action" onClick={dismissGuide}>知道了<Check size={18} aria-hidden="true" /></button></motion.aside>}</AnimatePresence>
         </section>
 
-        <Gallery key={galleryScope} items={identityVerified ? gallery.items : []} next={identityVerified ? gallery.next : null} visibility={gallery.visibility} isLoading={gallery.isLoading} isRefreshing={gallery.isRefreshing} error={gallery.error} loadingMore={gallery.loadingMore} onLoadMore={() => void gallery.loadMore()} onRefresh={() => { if (session.me?.signedIn) refreshGallery.current?.() }} showNsfw={showNsfw} getHeaders={getHeaders} />
+        <Gallery key={galleryScope} items={identityVerified ? gallery.items : []} next={identityVerified ? gallery.next : null} visibility={gallery.visibility} isLoading={gallery.isLoading} isRefreshing={gallery.isRefreshing} error={gallery.error} loadingMore={gallery.loadingMore} onLoadMore={() => void gallery.loadMore()} onRefresh={() => { if (session.me?.signedIn) refreshGallery.current?.() }} showNsfw={showNsfw} getHeaders={getHeaders} likeCounts={gallery.likeCounts} pendingLikes={gallery.pendingLikes} canLike={identityVerified && gallery.canLike} onLike={gallery.like} onWatch={gallery.watch} />
       </div>
       <footer className="challenge-footer"><p>Clef Omni · Cloudflare Workers AI</p><p>AI 分数表示匹配程度，奖励以红包站为准。</p></footer>
     </main>

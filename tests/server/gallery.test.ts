@@ -53,7 +53,7 @@ describe('anonymous scoped gallery', () => {
     expect(gallery.visibility).toBe('misses')
     expect(gallery.items.map(item => item.id)).toEqual([above, below, own])
     expect(gallery.items.find(item => item.id === own)).toMatchObject({ own: true, score: 90, passed: true })
-    for (const item of gallery.items) expect(Object.keys(item).sort()).toEqual(['id', 'score', 'nsfwScore', 'saved', 'createdAt', 'own', 'width', 'height', 'passed'].sort())
+    for (const item of gallery.items) expect(Object.keys(item).sort()).toEqual(['id', 'score', 'nsfwScore', 'saved', 'createdAt', 'own', 'width', 'height', 'passed', 'likes'].sort())
     expect(JSON.stringify(gallery)).not.toMatch(/user_id|image_key|private\/|nickname|displayName|galleryGrant/)
     f.sqlite.close()
   })

@@ -46,7 +46,7 @@ function headers(player, grant) {
 async function gallery(player, grant) {
   const result = await json(`${service}/api/gallery`, { headers: headers(player, grant) })
   for (const item of result.items) {
-    assert.deepEqual(Object.keys(item).sort(), ['id', 'score', 'nsfwScore', 'saved', 'createdAt', 'own', 'width', 'height', 'passed'].sort(), 'Gallery entries expose only anonymous presentation fields')
+    assert.deepEqual(Object.keys(item).sort(), ['id', 'score', 'nsfwScore', 'saved', 'createdAt', 'own', 'width', 'height', 'passed', 'likes'].sort(), 'Gallery entries expose only anonymous presentation fields')
     assert.equal(typeof item.own, 'boolean')
     assert.equal(typeof item.score, 'number')
   }
@@ -107,6 +107,29 @@ const originalIds = new Set(initial.items.map(item => item.id))
 const sensitive = initial.items.find(item => item.nsfwScore === 95)
 await image(player, sensitive.id)
 console.log('PASS 初始匿名图库：6 张未达区间图片，包含 NSFW 95 分；真实私有 R2 图片可鉴权读取。')
+
+async function syncLikes(participant, data) {
+  return json(`${service}/api/gallery`, { method: 'POST', headers: { ...headers(participant), 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+}
+const likedId = initial.items[0].id
+const likeBatch = { id: randomUUID(), items: [{ id: likedId, count: 300 }] }
+const liked = await syncLikes(player, { batch: likeBatch, watch: [likedId] })
+assert.deepEqual(liked.likeReceipt, { id: likeBatch.id, status: 'accepted', retryAfterMs: liked.likeReceipt.retryAfterMs, rejected: [] })
+assert.ok(liked.likeReceipt.retryAfterMs > 0 && liked.likeReceipt.retryAfterMs <= 30_000)
+assert.equal(liked.likeCounts[likedId], 300)
+assert.equal((await syncLikes(player, { batch: likeBatch })).likeCounts[likedId], 300, 'A replay cannot double count in real D1')
+const limited = await syncLikes(player, { batch: { id: randomUUID(), items: [{ id: likedId, count: 100 }] } })
+assert.equal(limited.likeReceipt.status, 'throttled')
+assert.equal(limited.likeCounts[likedId], 300)
+const recovered = await syncLikes(player, { receiptFor: likeBatch.id, watch: [likedId] })
+assert.equal(recovered.likeReceipt.status, 'accepted')
+assert.equal(recovered.likeCounts[likedId], 300, 'Reading a lost acknowledgement never writes likes')
+const secondLiker = await identify('小红')
+const independentlyLiked = await syncLikes(secondLiker, { batch: { id: randomUUID(), items: [{ id: likedId, count: 2 }] } })
+assert.equal(independentlyLiked.likeReceipt.status, 'accepted', 'Numeric player gates are independent')
+assert.equal(independentlyLiked.likeCounts[likedId], 302)
+assert.equal((await gallery(player)).remaining, 5, 'Likes never consume uploads or reward attempts')
+console.log('PASS 真实本地 D1：300 赞一次写入，重放不重复计数，30 秒限制、只读回执恢复及跨账号独立限流正常。')
 
 const first = await upload('小明', 8)
 player = first.player

@@ -75,7 +75,7 @@ try {
   assert.equal(await frame.getByText('选择图片 → 查看评分 → 提交结果', { exact: true }).count(), 1, 'First-use guidance remains present')
   assert.equal(await frame.locator('.gallery-photo[data-covered=true]').count(), 1)
   const cards = await frame.locator('.gallery-item').allInnerTexts()
-  assert.ok(cards.every(text => /^(NSFW\s*点击查看\s*)?\d+\.\d%$/.test(text.trim())), 'Cards contain only score and required NSFW cover')
+  assert.ok(cards.every(text => /^(NSFW\s*点击查看\s*)?\d+\.\d%\s*\d[\d,.]*(?:万|亿|万亿)?$/.test(text.trim())), 'Cards contain only score, like count and required NSFW cover')
   await readable(frame, 'desktop')
   await page.screenshot({ path: 'shots/simulator-official-desktop.png', fullPage: true })
   // This must also work as the first real click into the application iframe:
@@ -210,12 +210,28 @@ try {
   const transition = await other.frame.locator('.modal-panel').evaluate(node => window.getComputedStyle(node).transform)
   assert.ok(transition === 'none' || transition === 'matrix(1, 0, 0, 1, 0, 0)')
   await other.frame.locator('body').press('Escape')
+  let likeWrites = 0
+  other.page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/gallery' && request.method() === 'POST' && request.postDataJSON()?.batch) likeWrites += 1
+  })
+  const likedCard = other.frame.locator('[data-gallery-id]').first()
+  const likedId = await likedCard.getAttribute('data-gallery-id')
+  const likeButton = likedCard.locator('.gallery-like')
+  await likeButton.click()
+  await likeButton.evaluate(button => { for (let i = 0; i < 4; i++) button.click() })
+  await other.frame.getByRole('button', { name: '点赞，当前 5 次', exact: true }).waitFor()
+  assert.equal(likeWrites, 0, 'Real heart clicks update immediately without requests')
   const endedAt = Date.now()
   await other.page.locator('#end').click()
   await other.frame.getByRole('heading', { name: /本次活动已结束|本次挑战已结算/ }).waitFor()
   // Verify the documented visible 60s fallback as well as SDK-driven updates.
   await waitCount(other.frame, 11, 75_000)
   console.log(`活动结束后全部画廊可见：${Date.now() - endedAt}ms`)
+  const syncedHeart = other.frame.locator(`[data-gallery-id="${likedId}"] .gallery-like[data-pending=false]`)
+  await syncedHeart.waitFor()
+  assert.equal(await syncedHeart.getAttribute('aria-label'), '点赞，当前 5 次')
+  assert.equal(likeWrites, 1, 'Five real clicks are one batch in the official simulator and D1')
+  console.log('PASS 官方模拟器真实点击：5 赞即时显示、30 秒后一次批量保存，活动结束后仍正确显示，无重复写入。')
   assert.equal(await other.frame.locator('#photo').count(), 0)
   await reduced.close()
   assert.deepEqual(errors, [], 'No hydration failures or uncaught browser errors')

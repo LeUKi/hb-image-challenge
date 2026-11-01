@@ -57,6 +57,30 @@ export interface GalleryItem {
   width: number | null
   height: number | null
   passed: boolean
+  likes?: number
+}
+
+export interface GalleryLikeEntry {
+  id: string
+  count: number
+}
+
+export interface GalleryLikeBatch {
+  id: string
+  items: GalleryLikeEntry[]
+}
+
+export interface GalleryLikeReceipt {
+  id: string
+  status: 'accepted' | 'throttled'
+  retryAfterMs: number
+  rejected: string[]
+}
+
+export interface GallerySyncRequest {
+  batch?: GalleryLikeBatch
+  watch?: string[]
+  receiptFor?: string
 }
 
 export interface GalleryResponse {
@@ -65,6 +89,8 @@ export interface GalleryResponse {
   visibility: 'misses' | 'all'
   remaining: number
   latest: UploadResult | null
+  likeCounts?: Record<string, number>
+  likeReceipt?: GalleryLikeReceipt
 }
 
 export interface ApiError {

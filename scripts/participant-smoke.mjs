@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { Buffer } from 'node:buffer'
 import { mkdir, readFile } from 'node:fs/promises'
+import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright-core'
 
 const base = process.env.BASE_URL || 'http://127.0.0.1:5175'
@@ -49,6 +50,13 @@ async function fixture(overrides = {}, width = 390) {
   await context.route(`${appBase}/api/nonce`, route => route.fulfill({ json: { nonce: 'fixture-nonce' } }))
   let uploadCount = 0
   let galleryReads = 0
+  let imageReads = 0
+  const likeBatches = []
+  const likeTotals = new Map()
+  const acceptedLikes = new Map()
+  let loseLikeReply = Boolean(overrides.loseLikeReply)
+  let releaseLike
+  const likeGate = overrides.holdLikes ? new Promise(resolve => { releaseLike = resolve }) : Promise.resolve()
   let currentActor = '123'
   const actors = new Map([['123', { latest: overrides.galleryLatest ?? null, items: overrides.galleryItems ?? [], remaining: overrides.galleryRemaining ?? 3 }]])
   const actorFor = request => {
@@ -68,7 +76,7 @@ async function fixture(overrides = {}, width = 390) {
     actor.items = [{ ...uploadedResult, own: true, passed: uploadedResult.score >= 70, createdAt: Date.now() }, ...actor.items.filter(item => item.id !== resultId)]
     return route.fulfill({ json: uploadedResult })
   })
-  await context.route(`${appBase}/api/gallery**`, route => {
+  await context.route(`${appBase}/api/gallery**`, async route => {
     galleryReads += 1
     assert.match(route.request().headers().authorization, /^Bearer test-only-token:\d+$/)
     assert.ok(!route.request().url().includes('test-only-token'))
@@ -76,18 +84,41 @@ async function fixture(overrides = {}, width = 390) {
     const galleryItems = actor.items
     const cursor = new URL(route.request().url()).searchParams.get('cursor')
     const start = cursor ? galleryItems.findIndex(item => item.id === cursor.slice(7)) + 1 : 0
-    const items = galleryItems.slice(start, start + (overrides.pageSize ?? 24))
-    return route.fulfill({ json: { items, next: start + items.length < galleryItems.length ? `before:${items.at(-1).id}` : null, remaining: actor.latest?.remaining ?? actor.remaining, latest: actor.latest, visibility: overrides.visibility ?? 'misses' } })
+    const input = route.request().method() === 'POST' ? route.request().postDataJSON() : {}
+    const userId = route.request().headers().authorization.split(':').at(-1)
+    const receiptKey = id => `${userId}:${id}`
+    let likeReceipt
+    if (input.batch) {
+      likeBatches.push({ ...input.batch, userId, watch: input.watch ?? [] })
+      const key = receiptKey(input.batch.id)
+      if (!acceptedLikes.has(key)) {
+        const rejected = []
+        for (const item of input.batch.items) {
+          if (!galleryItems.some(image => image.id === item.id)) rejected.push(item.id)
+          else likeTotals.set(item.id, (likeTotals.get(item.id) ?? 0) + item.count)
+        }
+        acceptedLikes.set(key, { id: input.batch.id, status: 'accepted', retryAfterMs: 30_000, rejected })
+      }
+      likeReceipt = acceptedLikes.get(key)
+      await likeGate
+      if (loseLikeReply) { loseLikeReply = false; return route.abort('failed') }
+    } else if (input.receiptFor) likeReceipt = acceptedLikes.get(receiptKey(input.receiptFor))
+    const items = galleryItems.slice(start, start + (overrides.pageSize ?? 24)).map(item => ({ ...item, likes: likeTotals.get(item.id) ?? item.likes ?? 0 }))
+    const countIds = new Set([...items.map(item => item.id), ...(input.watch ?? [])])
+    const likeCounts = Object.fromEntries(galleryItems.filter(item => countIds.has(item.id)).map(item => [item.id, likeTotals.get(item.id) ?? item.likes ?? 0]))
+    return route.fulfill({ json: { items, next: start + items.length < galleryItems.length ? `before:${items.at(-1).id}` : null, remaining: actor.latest?.remaining ?? actor.remaining, latest: actor.latest, visibility: overrides.visibility ?? 'misses', likeCounts, ...(likeReceipt ? { likeReceipt } : {}) } })
   })
   await context.route(`${appBase}/api/images/*`, route => {
+    imageReads += 1
     assert.match(route.request().headers().authorization, /^Bearer test-only-token:\d+$/)
     assert.equal(new URL(route.request().url()).search, '')
     return route.fulfill({ contentType: 'image/png', body: picture.buffer })
   })
   const state = { userId: '123', hongbao: { ...hongbao, ...overrides.hongbao }, viewer: { signedIn: true, name: '小明' }, theme: 'light', clock: 0, me: { ...normalMe, ...overrides.me }, myView: overrides.myView ?? null, view: null, mine: overrides.mine ?? [], receipt: overrides.receipt ?? { judged: true, claimed: true, amount: '0.50', unit: 'LDC', settled: true }, debug, ...overrides }
   const page = await context.newPage()
+  if (overrides.clock) await page.clock.install({ time: new Date() })
   currentPage = page
-  currentCounts = () => ({ uploadCount, galleryReads })
+  currentCounts = () => ({ uploadCount, galleryReads, imageReads, likeBatches })
   page.on('console', message => { if (debug || message.type() === 'error') console.log('Browser console:', message.text()) })
   if (debug) page.on('request', request => { if (request.url().startsWith(`${appBase}/api/`)) console.log('API request:', request.method(), new URL(request.url()).pathname) })
   page.on('pageerror', error => errors.push(error.message))
@@ -149,6 +180,7 @@ async function fixture(overrides = {}, width = 390) {
   await page.goto(`${station}/__participant_harness`, { waitUntil: 'networkidle' })
   const frame = page.frameLocator('iframe')
   return { context, page, frame, uploads: () => uploadCount, galleryReads: () => galleryReads,
+    imageReads: () => imageReads, likeBatches, likeTotals, releaseLike: () => releaseLike?.(),
     replaceGallery: items => { actors.get(currentActor).items = items }, releaseUpload: () => releaseUpload?.(),
     switchActor: async (id, name = '小明') => {
       currentActor = id
@@ -164,6 +196,7 @@ async function fixture(overrides = {}, width = 390) {
 }
 
 try {
+  if (process.env.LIKES_ONLY !== '1') {
   {
     console.log('Checking initial loading guard')
     const { context, page, frame, uploads } = await fixture({ holdHello: true })
@@ -433,8 +466,176 @@ try {
     assert.equal(uploads(), 0)
     await context.close()
   }
+  }
+  const likedImage = (id = resultId, createdAt = 1) => ({ id, createdAt, score: 35, saved: true, own: false, passed: false, nsfwScore: 2, width: 400, height: 600, likes: 0 })
+  const pauseClock = async page => {
+    const now = await page.evaluate(() => Date.now())
+    await page.clock.pauseAt(new Date(now + 1_000))
+  }
+  const likesFixture = (overrides, width) => fixture({ ...overrides, clock: true }, width)
+  const tap = async (button, count) => button.evaluate((element, count) => { for (let i = 0; i < count; i++) element.click() }, count)
+  // Network responses arrive outside the paused browser clock. Let Query's
+  // notification timers commit each response before observing its UI result.
+  const settleClock = async (page, condition, message) => {
+    for (let n = 0; n < 300; n++) {
+      if (await condition()) return
+      await page.clock.runFor(10)
+      await delay(10)
+    }
+    assert.fail(message)
+  }
+  const waitCount = async (button, count) => {
+    await settleClock(button.page(), async () => await button.count() > 0 && await button.getAttribute('aria-label') === `点赞，当前 ${count} 次`, `Expected visible like count ${count}`)
+  }
+  const waitSynced = button => settleClock(button.page(), async () => await button.getAttribute('data-pending') === 'false', 'Expected pending likes to be acknowledged')
+  {
+    console.log('Checking 300 optimistic taps, fixed 30s batch, preserved image/geometry and passive count refresh')
+    const f = await likesFixture({ galleryItems: [{ ...likedImage(), score: 100, passed: true }], visibility: 'all' }, 390)
+    const button = f.frame.locator('.gallery-like').first()
+    await button.waitFor()
+    await button.scrollIntoViewIfNeeded()
+    await f.frame.locator('.private-image img').waitFor()
+    await pauseClock(f.page)
+    const reads = f.imageReads()
+    const before = await f.frame.locator('[data-gallery-id]').first().boundingBox()
+    await button.click()
+    await tap(button, 299)
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 300 次')
+    assert.equal(f.likeBatches.length, 0)
+    assert.equal(await f.frame.getByRole('dialog').count(), 0, 'Heart must not open image details')
+    await f.page.clock.runFor(29_900)
+    await tap(button, 1)
+    assert.equal(f.likeBatches.length, 0, 'Continued taps are local')
+    await f.page.clock.runFor(100)
+    await waitSynced(button)
+    assert.equal(f.likeBatches.length, 1)
+    assert.deepEqual(f.likeBatches[0].items, [{ id: resultId, count: 301 }])
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 301 次')
+    assert.equal(f.imageReads(), reads, 'Likes never refetch an already loaded image')
+    assert.deepEqual(await f.frame.locator('[data-gallery-id]').first().boundingBox(), before)
+    f.likeTotals.set(resultId, 350)
+    await f.page.clock.runFor(31_000)
+    await waitCount(button, 350)
+    assert.equal(f.likeBatches.length, 1, 'Passive refresh creates no extra write batch')
+    f.likeTotals.set(resultId, 9_999)
+    await f.frame.getByRole('button', { name: '刷新作品' }).click()
+    await waitCount(button, 9_999)
+    for (const width of [320, 360, 390, 1440]) {
+      await f.page.setViewportSize({ width, height: 900 })
+      await button.scrollIntoViewIfNeeded()
+      const heart = await button.boundingBox()
+      const score = await f.frame.locator('.gallery-score').first().boundingBox()
+      const overlap = Math.max(0, Math.min(heart.x + heart.width, score.x + score.width) - Math.max(heart.x, score.x)) * Math.max(0, Math.min(heart.y + heart.height, score.y + score.height) - Math.max(heart.y, score.y))
+      assert.equal(overlap, 0, `${width}px: a large like count must not cover a 100% score`)
+      assert.ok(heart.height >= 44, 'Heart keeps a 44px touch target')
+      assert.ok(await f.frame.locator('body').evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      if (width === 390 || width === 1440) await f.page.screenshot({ path: `shots/gallery-likes-${width}.png`, fullPage: true })
+    }
+    await f.context.close()
+  }
+  {
+    console.log('Checking taps during an in-flight batch survive its acknowledgement')
+    const f = await likesFixture({ galleryItems: [likedImage()], holdLikes: true }, 1440)
+    const button = f.frame.locator('.gallery-like').first()
+    await button.waitFor()
+    await pauseClock(f.page)
+    await tap(button, 5)
+    const started = f.page.waitForRequest(request => request.url().includes('/api/gallery') && request.postDataJSON()?.batch)
+    await f.page.clock.runFor(30_000)
+    await started
+    assert.equal(f.likeBatches.length, 1)
+    await tap(button, 3)
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 8 次')
+    const acknowledged = f.page.waitForResponse(response => response.url().includes('/api/gallery') && response.request().postDataJSON()?.batch)
+    f.releaseLike()
+    await acknowledged
+    await settleClock(f.page, () => f.frame.locator('body').evaluate(() => !JSON.parse(window.sessionStorage.getItem('hb-image-challenge:likes:lifecycle-test:123')).frozen), 'First frozen batch must be acknowledged before the next deadline')
+    await f.page.clock.runFor(30_000)
+    await waitSynced(button)
+    assert.equal(f.likeBatches.length, 2)
+    assert.equal(f.likeBatches[1].items[0].count, 3)
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 8 次')
+    await f.context.close()
+  }
+  {
+    console.log('Checking an accepted batch with a lost response recovers via a readonly receipt')
+    const f = await likesFixture({ galleryItems: [likedImage()], loseLikeReply: true })
+    const button = f.frame.locator('.gallery-like').first()
+    await button.waitFor()
+    await pauseClock(f.page)
+    await tap(button, 4)
+    await f.page.clock.runFor(30_000)
+    await settleClock(f.page, () => f.frame.getByText('暂时无法更新作品；点赞已保留，将在恢复连接后同步。').isVisible(), 'Lost response must retain likes and report the connection failure')
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 4 次')
+    await f.frame.getByRole('button', { name: '刷新作品' }).click()
+    await waitSynced(button)
+    assert.equal(f.likeBatches.length, 1, 'A readonly receipt query must not resubmit inside the gate')
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 4 次', 'No optimistic double count after lost response')
+    assert.equal(f.likeTotals.get(resultId), 4)
+    await f.context.close()
+  }
+  {
+    console.log('Checking iframe reload preserves unsent likes and the original send deadline')
+    const f = await likesFixture({ galleryItems: [likedImage()] })
+    const button = f.frame.locator('.gallery-like').first()
+    await button.waitFor()
+    await pauseClock(f.page)
+    await tap(button, 7)
+    await f.page.clock.runFor(10_000)
+    await reloadChallenge(f.page)
+    await waitCount(button, 7)
+    assert.equal(f.likeBatches.length, 0)
+    await f.page.clock.runFor(19_000)
+    assert.equal(f.likeBatches.length, 0, 'Reload must not reset or bypass the gate')
+    await f.page.clock.runFor(1_000)
+    await waitSynced(button)
+    assert.equal(f.likeBatches.length, 1)
+    assert.equal(f.likeTotals.get(resultId), 7)
+    await f.context.close()
+  }
+  {
+    console.log('Checking an offscreen card beyond 200 loaded images receives its acknowledged base count')
+    const images = Array.from({ length: 220 }, (_, i) => likedImage(`00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, 220 - i))
+    const f = await likesFixture({ galleryItems: images })
+    await f.frame.locator('.gallery-like').first().waitFor()
+    while (await f.frame.getByRole('button', { name: '加载更早作品' }).count()) {
+      await f.frame.getByRole('button', { name: '加载更早作品' }).click()
+      await f.frame.getByRole('button', { name: '正在加载', exact: true }).waitFor({ state: 'hidden' })
+    }
+    await pauseClock(f.page)
+    const id = images.at(-1).id
+    const button = f.frame.locator(`[data-gallery-id="${id}"] .gallery-like`)
+    await button.click()
+    await f.frame.locator('.gallery-heading').evaluate(element => element.scrollIntoView())
+    await f.page.clock.runFor(30_000)
+    await waitSynced(button)
+    assert.equal(f.likeBatches.length, 1)
+    assert.ok(f.likeBatches[0].watch.includes(id))
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 1 次')
+    await f.context.close()
+  }
+  {
+    console.log('Checking same-name numeric accounts keep separate pending outboxes')
+    const f = await likesFixture({ galleryItems: [likedImage()] }, 320)
+    const button = f.frame.locator('.gallery-like').first()
+    await button.waitFor()
+    await tap(button, 6)
+    await f.switchActor('456')
+    f.replaceGallery([likedImage()])
+    await f.frame.getByRole('button', { name: '刷新作品' }).click()
+    await f.frame.locator('.gallery-like').waitFor()
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 0 次')
+    await tap(button, 2)
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 2 次')
+    await f.switchActor('123')
+    await f.frame.locator('.gallery-like').waitFor()
+    assert.equal(await button.getAttribute('aria-label'), '点赞，当前 6 次')
+    assert.equal(f.likeBatches.length, 0)
+    await f.page.screenshot({ path: 'shots/gallery-likes-small.png', fullPage: true })
+    await f.context.close()
+  }
   assert.deepEqual(errors, [], 'No hydration or browser errors')
-  console.log('Official SDK iframe lifecycle: 18 scenarios passed, including verification outages, same-name account isolation, stale responses, NSFW preferences, automatic insertion, pagination, final-attempt settlement and uncertain submission recovery; 320/390/1440px: passed')
+  console.log('Official SDK iframe: six batched-likes browser scenarios passed; lifecycle scenarios also run unless LIKES_ONLY=1.')
 } catch (error) {
   console.log('Errors:', errors)
   console.log('Current fixture requests:', currentCounts?.())

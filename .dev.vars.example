@@ -1,4 +1,0 @@
-# Deploy to Cloudflare 时设置为你自己的 LINUX DO 数字 ID。
-OWNER_ID=10000
-# 线上仅信任正式红包站；本地联调时改为官方模拟器的地址。
-HB_SITE=https://hb.lafi.sh

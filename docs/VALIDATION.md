@@ -8,9 +8,10 @@
 - Official hongbao kit: 22 judge tests passed; `npm run judge:check` ended with `可以去网站部署了`.
 - Client and Worker SSR bundles built successfully using the Cloudflare Vite adapter. No Nitro or separate Node server.
 - Built Worker ran locally in workerd. Initial HTML already contains the title, challenge, upload interface and linked stylesheet; CSS requests returned 200.
-- Headless Chrome: 1440px / 390px / 320px, no horizontal overflow; valid/invalid file selection, image removal, route navigation and author ID form validation passed. No browser exceptions or hydration errors.
+- Headless Chrome: 1440px / 390px / 320px, no horizontal overflow; valid/invalid file selection, image removal, route navigation and author ID form validation passed. No browser exceptions or hydration errors. The typography correction also checks visible body/control text at 16px minimum, 48px image selection / 44px removal targets, and initially visible instructions that can collapse and reopen.
 - Official `judge:page -- --shot --port 8850`: wide, phone and open drawer screenshots generated; SDK connected; no page errors or failed resource loads. Screenshots are local, ignored artifacts under `shots/`.
 - D1 initial migration applied successfully to local storage.
+- Deploy template declarations checked against Cloudflare's documented rules: `OWNER_ID` / `HB_SITE` appear only as Wrangler public vars. The local config sample moved out of the recognized root secret-example filenames to `docs/local-worker-config.example`; no root `.dev.vars.example` or `.env.example` remains. This verifies the source correction, not a completed Cloudflare deployment wizard.
 - Production dependency audit: 0 reported vulnerabilities. The full development tree currently reports 11 moderate findings propagated from a minimatch advisory in lint tooling. No incompatible forced dependency downgrade was applied.
 
 ## Limits of this evidence
@@ -26,7 +27,8 @@
 
 ```sh
 npm ci
-cp .dev.vars.example .dev.vars
+cp docs/local-worker-config.example .dev.vars
+# Set OWNER_ID in .dev.vars to your LINUX DO numeric user ID.
 npm run db:local
 npm run check
 npm run preview

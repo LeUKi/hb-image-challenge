@@ -37,6 +37,9 @@
       },
       "AI": {
         "description": "使用你的 Workers AI 额度，不需要填写 API Token。"
+      },
+      "HB_SITE": {
+        "description": "红包站地址。通常保留默认值 https://hb.lafi.sh，无需修改。"
       }
     }
   },

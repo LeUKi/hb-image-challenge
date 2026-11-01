@@ -9,7 +9,7 @@ export const params = [
 ]
 export const network = [{ param: 'server' }]
 export const meta = {
-  name: '见图 · 图片挑战',
+  name: '图片挑战',
   description: '上传图片，由 AI 判断匹配度，落在指定区间即可领取奖励。每位作者部署自己的完整服务。',
   page: { param: 'server' },
 }

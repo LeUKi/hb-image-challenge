@@ -1,15 +1,20 @@
 import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
-import { ArrowRight, Check, Copy, Database, ExternalLink, HardDrive, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, Copy, Database, ExternalLink, HardDrive, Sparkles } from 'lucide-react'
 import { Layout } from '../components/layout'
 
 export const Route = createFileRoute('/setup')({
-  head: () => ({ meta: [{ title: '部署你自己的图片挑战 · 见图' }] }),
+  head: () => ({ meta: [{ title: '部署服务 · 图片挑战' }] }),
   component: SetupPage,
 })
 
 const DEPLOY_URL = 'https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/hb-image-challenge'
+const resources = [
+  { icon: Sparkles, title: 'AI 评分', detail: '使用你账户的 Clef Omni 模型额度。' },
+  { icon: HardDrive, title: '图片保存', detail: '图片存入私有 R2，按红包选择是否保存。' },
+  { icon: Database, title: '结果记录', detail: 'D1 记录上传次数与评分，供判定器核验。' },
+]
 
 function SetupPage() {
   const [copied, setCopied] = useState(false)
@@ -21,22 +26,72 @@ function SetupPage() {
         await navigator.clipboard.writeText(`OWNER_ID=${value.ownerId.trim()}\nHB_SITE=https://hb.lafi.sh\n`)
         setCopied(true)
         setCopyError('')
-      } catch { setCopyError('复制未完成，请手动把下方数字 ID 填入 Cloudflare 的 OWNER_ID 变量。') }
+      } catch { setCopyError('复制未完成，请手动把数字 ID 填入本地 .dev.vars 的 OWNER_ID。') }
     },
   })
 
-  return <Layout><main className="mx-auto max-w-3xl pb-5 pt-12 max-sm:pt-9">
-    <p className="eyebrow mb-4">MAKE IT YOURS</p><h1 className="text-3xl font-semibold tracking-tight">你的挑战，你的服务。</h1><p className="mt-4 text-sm leading-8 text-slate-500">把网页、AI 和图片存储，一起部署到你自己的 Cloudflare 账号。<br className="max-sm:hidden" />所有图片与用量都归你管理，无需向我们提供 API 密钥。</p>
+  return <Layout>
+    <main>
+      <header className="page-intro">
+        <p className="context-label">红包作者</p>
+        <h1 className="page-title">部署图片挑战服务</h1>
+        <p className="page-description">把网页、AI 和图片存储部署到自己的 Cloudflare 账户，图片与使用量由你管理。</p>
+      </header>
 
-    <section className="panel mt-8 p-7 max-sm:p-5"><h2 className="text-sm font-semibold">一次部署，包含完整能力</h2><div className="my-7 grid grid-cols-3 gap-4 max-sm:grid-cols-1">{[[Sparkles, 'AI 评分', '固定使用 Clef Omni 模型'], [HardDrive, '图片保存', '私有 R2，按红包选择是否保存'], [Database, '结果记录', 'D1 保存次数与核验结果']].map(([Icon, title, text]) => { const Glyph = Icon as typeof Sparkles; return <div className="rounded-xl border border-slate-100 bg-slate-50/60 p-4" key={String(title)}><Glyph size={18} className="mb-3 text-accent" /><h3 className="text-xs font-semibold">{String(title)}</h3><p className="mt-2 text-[11px] leading-5 text-slate-400">{String(text)}</p></div> })}</div><a className="button-primary" href={DEPLOY_URL} target="_blank" rel="noreferrer">Deploy to Cloudflare<ExternalLink size={14} /></a><p className="mt-4 text-xs leading-6 text-slate-400">登录 Cloudflare 并连接 GitHub，确认 Worker、R2 和 D1 的资源名称后部署。首次使用 R2 时按 Cloudflare 提示完成账户设置。</p></section>
+      <div className="setup-layout">
+        <div className="setup-content">
+          <section className="setup-section">
+            <h2><span className="step-number" aria-hidden="true">1</span>设置作者信息</h2>
+            <p>点击部署按钮并连接 GitHub，在 Cloudflare 的表单中填写以下两个普通环境变量：</p>
+            <dl className="mt-5 space-y-5 rounded-xl border border-line bg-white p-5">
+              <div><dt className="font-mono font-semibold">OWNER_ID</dt><dd className="mt-1 text-muted">你的 LINUX DO 数字用户 ID。服务只处理这个作者发出的红包。</dd></div>
+              <div><dt className="font-mono font-semibold">HB_SITE</dt><dd className="mt-1 text-muted">红包站地址，保留默认值 <code>https://hb.lafi.sh</code> 即可。</dd></div>
+            </dl>
+            <details className="mt-5">
+              <summary className="min-h-11 py-2 font-medium">本地开发配置</summary>
+              <p className="mt-3">在本地运行时，将下面生成的配置写入 <code>.dev.vars</code> 文件。</p>
+              <form className="mt-4" onSubmit={event => { event.preventDefault(); void form.handleSubmit() }}>
+                <form.Field name="ownerId" validators={{ onChange: ({ value }) => /^\d{1,20}$/.test(value.trim()) ? undefined : '请输入 LINUX DO 数字 ID' }}>{field => <div>
+                  <label htmlFor="owner-id" className="field-label">LINUX DO 数字 ID</label>
+                  <input className="text-input max-w-sm" id="owner-id" name={field.name} inputMode="numeric" placeholder="例如 10000" value={field.state.value}
+                    onChange={event => { field.handleChange(event.target.value); setCopied(false) }} onBlur={field.handleBlur}
+                    aria-invalid={field.state.meta.isTouched && field.state.meta.errors.length > 0} aria-describedby="owner-error" />
+                  {field.state.meta.isTouched && field.state.meta.errors.length > 0 && <p id="owner-error" className="mt-2 !text-[#953d3b]">{field.state.meta.errors.join('，')}</p>}
+                </div>}</form.Field>
+                <form.Subscribe selector={state => [state.canSubmit, state.values.ownerId] as const}>{([canSubmit, ownerId]) => <button type="submit" disabled={!canSubmit || !/^\d{1,20}$/.test(ownerId.trim())} className="button-secondary mt-4">
+                  {copied ? <Check size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}{copied ? '已复制本地开发配置' : '复制本地开发配置'}
+                </button>}</form.Subscribe>
+                {copyError && <p role="alert" className="mt-3 !text-[#953d3b]">{copyError}</p>}
+              </form>
+            </details>
+          </section>
+          <section className="setup-section">
+            <h2><span className="step-number" aria-hidden="true">2</span>在红包站创建挑战</h2>
+            <p>使用图片挑战判定器，填入部署后的服务地址，例如 <code>https://你的服务.workers.dev/</code>。再填写挑战描述、目标评分区间、每人上传次数和是否保存图片。</p>
+            <p className="mt-3">每人默认 3 次，最多 10 次。R2 会随服务一起部署，是否保存图片可按每个红包调整。</p>
+          </section>
+          <section className="setup-section">
+            <h2><span className="step-number" aria-hidden="true">3</span>开放红包，邀请玩家</h2>
+            <p>玩家从红包页打开图片挑战，上传图片后等待评分。提交结果时，判定器会向你的服务核验，符合目标区间再发放奖励。</p>
+          </section>
+        </div>
 
-    <ol className="mt-8 space-y-7">
-      <li className="rule-row"><span className="step-number">01</span><div className="min-w-0 flex-1"><h2 className="text-sm font-semibold">设置你的作者 ID</h2><p className="mt-2 text-xs leading-6 text-slate-500">在 Cloudflare 的 Worker → Settings → Variables and Secrets，将 <code>OWNER_ID</code> 设为你自己的 LINUX DO 数字用户 ID。这个服务只处理你发出的红包。</p><form className="mt-4" onSubmit={event => { event.preventDefault(); void form.handleSubmit() }}><form.Field name="ownerId" validators={{ onChange: ({ value }) => /^\d{1,20}$/.test(value.trim()) ? undefined : '请输入 LINUX DO 数字 ID' }}>{field => <div><label htmlFor="owner-id" className="field-label">LINUX DO 数字 ID</label><input className="text-input max-w-xs" id="owner-id" name={field.name} inputMode="numeric" placeholder="例如 10000" value={field.state.value} onChange={event => { field.handleChange(event.target.value); setCopied(false) }} onBlur={field.handleBlur} aria-describedby="owner-error" />{field.state.meta.isTouched && field.state.meta.errors.length > 0 && <p id="owner-error" className="mt-2 text-xs text-rose-600">{field.state.meta.errors.join('，')}</p>}</div>}</form.Field><form.Subscribe selector={state => [state.canSubmit, state.values.ownerId] as const}>{([canSubmit, ownerId]) => <button type="submit" disabled={!canSubmit || !/^\d{1,20}$/.test(ownerId.trim())} className="button-secondary mt-3">{copied ? <Check size={13} /> : <Copy size={13} />}{copied ? '已复制本地开发配置' : '复制本地开发配置'}</button>}</form.Subscribe>{copyError && <p role="alert" className="mt-2 text-xs text-rose-600">{copyError}</p>}</form></div></li>
-      <li className="rule-row"><span className="step-number">02</span><div><h2 className="text-sm font-semibold">在红包站使用图片挑战判定器</h2><p className="mt-2 text-xs leading-6 text-slate-500">填写部署后得到的服务地址，例如 <code className="break-all">https://你的服务.workers.dev/</code>。然后设置挑战描述、评分区间、每人次数和是否保存图片。每人最多 10 次，默认 3 次。</p></div></li>
-      <li className="rule-row"><span className="step-number">03</span><div><h2 className="text-sm font-semibold">开放红包，邀请大家来试</h2><p className="mt-2 text-xs leading-6 text-slate-500">玩家在附带网页上传图片，服务并行保存和评分。玩家提交结果编号后，判定器会向你的服务核验，符合范围再发奖。</p></div></li>
-    </ol>
+        <aside className="deployment-card" aria-label="部署到 Cloudflare">
+          <h2 className="section-title">完整部署到你的账户</h2>
+          <ul className="resource-list">{resources.map(({ icon: Icon, title, detail }) => <li key={title}>
+            <Icon size={22} strokeWidth={1.7} aria-hidden="true" />
+            <div><h3>{title}</h3><p>{detail}</p></div>
+          </li>)}</ul>
+          <a className="button-primary w-full" href={DEPLOY_URL} target="_blank" rel="noreferrer">Deploy to Cloudflare<ExternalLink size={18} aria-hidden="true" /></a>
+          <p className="mt-5 text-muted">首次使用 R2 时，按 Cloudflare 的提示完成账户开通。部署后请确认资源和作者 ID 配置正确。</p>
+        </aside>
+      </div>
 
-    <div className="mt-8 flex items-start gap-3 rounded-2xl border border-slate-200 bg-white/60 p-5"><ShieldCheck size={18} className="mt-0.5 shrink-0 text-accent" /><p className="text-xs leading-7 text-slate-500">AI、R2、数据库的使用量计入你的 Cloudflare 账号。保存的图片默认私有，其他玩家不能凭结果编号读取。模型评分是判断依据，不代表经过校准的真实概率。</p></div>
-    <a href="https://github.com/LeUKi/hb-image-challenge#readme" target="_blank" rel="noreferrer" className="mt-7 inline-flex items-center gap-2 text-xs text-accent">查看部署说明与源码<ArrowRight size={13} /></a>
-  </main></Layout>
+      <div className="notice mt-8">
+        <HardDrive size={22} aria-hidden="true" />
+        <p>AI、R2 和数据库用量计入你的 Cloudflare 账户。保存的图片默认私有，其他玩家无法访问。</p>
+      </div>
+      <a href="https://github.com/LeUKi/hb-image-challenge#readme" target="_blank" rel="noreferrer" className="text-action mt-5">查看完整部署说明<ArrowRight size={18} aria-hidden="true" /></a>
+    </main>
+  </Layout>
 }

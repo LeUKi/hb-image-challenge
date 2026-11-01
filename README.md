@@ -1,4 +1,4 @@
-# 见图 · hb-image-challenge
+# 图片挑战 · hb-image-challenge
 
 一个可复用的图片挑战判定器和作者自建服务。玩家上传图片，AI 判断它与挑战描述的匹配度；分数落在作者设定的区间，再由红包站判定器核验和发奖。
 
@@ -21,7 +21,8 @@
 
 ```sh
 npm ci
-cp .dev.vars.example .dev.vars
+cp docs/local-worker-config.example .dev.vars
+# 将 .dev.vars 里的 OWNER_ID 填为自己的 LINUX DO 数字 ID。
 npm run db:local
 npm run dev
 ```
@@ -40,6 +41,8 @@ npm run check
 2. 在部署配置或 Worker 的 **Settings → Variables and Secrets** 设置 `OWNER_ID` 为自己的 **LINUX DO 数字用户 ID**，保持 `HB_SITE=https://hb.lafi.sh`。空 ID 的服务拒绝上传。
 3. 部署命令会构建 SSR 应用、发布 Worker，再执行 D1 migrations。`database_id` 的全零值是模板占位；官方部署流程会用实际资源 ID 替换。自己用 CLI 部署时，请先创建数据库并替换为实际 ID。
 4. 在红包站使用 `judge/judge.js` 和对应的测试文件，填入部署得到的服务地址。设置挑战描述、最低/最高匹配度、每人次数（1–10，默认 3）和是否保存图片。
+
+`OWNER_ID` 和 `HB_SITE` 都是普通运行变量，统一在 `wrangler.jsonc.vars` 声明。不要把它们再放入根目录的 `.dev.vars.example` 或 `.env.example`：Deploy to Cloudflare 会把这两类文件里的键识别为 secrets，导致部署表单重复出现一组遮罩输入。本地配置示例放在 `docs/local-worker-config.example`，不会作为部署 secrets 读取。
 
 CLI 首次部署：
 

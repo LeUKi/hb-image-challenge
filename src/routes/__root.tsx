@@ -8,9 +8,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: 'utf-8' },
       { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-      { title: '见图 · 图片挑战' },
+      { title: '图片挑战' },
       { name: 'description', content: '选一张图片，让 AI 判断。落在挑战区间，就有机会领到红包。' },
-      { name: 'theme-color', content: '#f7f8fa' },
+      { name: 'theme-color', content: '#f5f7f8' },
     ],
     links: [{ rel: 'stylesheet', href: stylesheet }],
   }),

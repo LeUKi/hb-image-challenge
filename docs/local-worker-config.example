@@ -1,0 +1,5 @@
+# 复制到仓库根目录的 .dev.vars，仅用于本地开发。
+# 填入你自己的 LINUX DO 数字 ID。
+OWNER_ID=
+# 本地联调时可改为官方模拟器地址。
+HB_SITE=https://hb.lafi.sh

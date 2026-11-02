@@ -101,6 +101,7 @@ export interface GalleryResponse {
   visibility: 'misses' | 'all'
   remaining: number
   latest: UploadResult | null
+  ownResults: UploadResult[]
   likeCounts?: Record<string, number>
   likeReceipt?: GalleryLikeReceipt
 }

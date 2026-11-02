@@ -182,12 +182,13 @@ async function gallery(request: Request, env: AppEnv): Promise<Response> {
     height: attempt.image_height, passed: passed(attempt), likes: likeCounts[attempt.id] ?? 0,
   }))
   const remaining = await remainingAttempts(env.DB, identity, context.config.maxAttempts)
-  const latest = await env.DB.prepare("SELECT * FROM image_attempts WHERE hongbao = ? AND user_id = ? AND status = 'ready' ORDER BY attempt_no DESC LIMIT 1")
-    .bind(identity.hongbao, identity.sub).first<Attempt>()
+  const ownAttempts = await env.DB.prepare("SELECT * FROM image_attempts WHERE hongbao = ? AND user_id = ? AND status = 'ready' ORDER BY attempt_no ASC LIMIT ?")
+    .bind(identity.hongbao, identity.sub, MAX_ATTEMPTS).all<Attempt>()
+  const ownResults = ownAttempts.results.map(attempt => uploadResult(attempt, remaining))
   const response: GalleryResponse = {
     items, next: records.results.length > limit ? encodeCursor(page[page.length - 1]) : null,
     visibility: all ? 'all' : 'misses', remaining,
-    latest: latest ? uploadResult(latest, remaining) : null,
+    latest: ownResults.at(-1) ?? null, ownResults,
     likeCounts, ...(likeReceipt ? { likeReceipt } : {}),
   }
   return json(response)

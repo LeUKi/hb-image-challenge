@@ -44,15 +44,15 @@ function LikeButton({ count, pending, disabled, onLike, detail = false }: {
   const reducedMotion = useReducedMotion()
   const formatted = new Intl.NumberFormat('zh-CN', { notation: count >= 10_000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(count)
   return <motion.button type="button" className={detail ? 'detail-like' : 'gallery-like'} data-pending={pending}
-    disabled={disabled} aria-label={`点赞，当前 ${count} 次`} title="可以连续点赞，后台定时同步"
+    disabled={disabled} aria-label={`点赞，当前 ${count} 次`} title="点赞"
     whileTap={reducedMotion ? undefined : { scale: .88 }} transition={{ type: 'spring', stiffness: 500, damping: 22 }}
     onClick={event => { event.stopPropagation(); onLike() }}>
     <Heart size={20} aria-hidden="true" fill={pending ? 'currentColor' : 'none'} /><span aria-hidden="true">{formatted}</span>
   </motion.button>
 }
 
-export function Gallery({ items, next, visibility, isLoading, isRefreshing, error, loadingMore, onLoadMore, onRefresh, showNsfw, getHeaders, likeCounts, pendingLikes, canLike, onLike, onWatch, selected, onSelect, selectedSource, selectedActions, minScore, maxScore }: {
-  items: GalleryItem[]; next: string | null; visibility: 'misses' | 'all'; isLoading: boolean; isRefreshing: boolean
+export function Gallery({ items, next, isLoading, isRefreshing, error, loadingMore, onLoadMore, onRefresh, showNsfw, getHeaders, likeCounts, pendingLikes, canLike, onLike, onWatch, selected, onSelect, selectedSource, selectedActions, minScore, maxScore }: {
+  items: GalleryItem[]; next: string | null; isLoading: boolean; isRefreshing: boolean
   error: string | null; loadingMore: boolean; onLoadMore: () => void; onRefresh: () => void
   showNsfw: boolean; getHeaders: () => Promise<Headers>
   likeCounts: Record<string, number>; pendingLikes: Record<string, number>; canLike: boolean
@@ -106,8 +106,7 @@ export function Gallery({ items, next, visibility, isLoading, isRefreshing, erro
   return <section className="gallery-section" aria-labelledby="gallery-title" ref={root}>
     <div className="gallery-heading"><h2 id="gallery-title">本轮作品</h2><button type="button" className="icon-button" onClick={onRefresh} disabled={isRefreshing} aria-label="刷新作品">
       <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} aria-hidden="true" /></button></div>
-    <p className="gallery-description">{visibility === 'all' ? '已解锁本轮全部评分记录。' : '先看未达标作品；领取成功或活动结束后解锁全部。'}</p>
-    <div className="gallery-live" aria-live="polite" aria-atomic="true"><span className="sr-only">已显示 {items.length} 条评分记录，新作品会自动更新。</span></div>
+    <div className="gallery-live" aria-live="polite" aria-atomic="true"><span className="sr-only">已显示 {items.length} 幅作品。</span></div>
     {layout.items.length ? <div className="gallery-columns">{columns.map((column, index) => <div className="gallery-column" key={index}>
       {column.map(item => {
         const covered = isCovered(item, showNsfw, revealed.has(item.id))
@@ -125,8 +124,7 @@ export function Gallery({ items, next, visibility, isLoading, isRefreshing, erro
       })}
     </div>)}</div> : <div className="gallery-empty">
       {isLoading ? <LoaderCircle className="animate-spin" size={28} aria-hidden="true" /> : <Images size={32} strokeWidth={1.4} aria-hidden="true" />}
-      <p>{isLoading ? '正在读取本轮作品' : '还没有可展示的评分记录'}</p>
-      <p>最新作品会自动显示在这里。</p>
+      <p>{isLoading ? '正在加载作品' : '暂无作品'}</p>
     </div>}
     {error && <div className="notice" role="status"><p>{error}</p><button type="button" className="text-action" onClick={onRefresh}>重新读取</button></div>}
     {next && <button type="button" className="button-secondary load-more" disabled={loadingMore} onClick={onLoadMore}>
@@ -138,14 +136,13 @@ export function Gallery({ items, next, visibility, isLoading, isRefreshing, erro
           style={{ aspectRatio: `${selected.width ?? 3} / ${selected.height ?? 4}` }} aria-label={selectedCovered ? 'NSFW，点击查看图片' : '挑战作品'}>
           <PrivateImage item={selected} cache={cache} source={selectedSource} eager />
           {selectedCovered && <span className="nsfw-cover"><EyeOff size={26} aria-hidden="true" /><strong>NSFW</strong><span>点击查看</span></span>}
-        </button> : <p className="text-muted">本次只保存评分记录，没有保存图片。</p>}
+        </button> : <p>未保存图片</p>}
         <div className="image-detail-scores">
           <div className="image-detail-score"><span>匹配评分</span><strong data-passed={selected.passed}>{selected.score.toFixed(1)}%</strong></div>
           <div className="image-detail-score image-detail-nsfw"><span>NSFW 评分</span><strong>{selected.nsfwScore === null ? '未返回' : `${selected.nsfwScore.toFixed(1)}%`}</strong></div>
         </div>
         <div className="image-detail-context"><span>目标区间 {minScore}–{maxScore}%</span>{selected.width && selected.height ? <span>{selected.width} × {selected.height} px</span> : null}</div>
-        <div className="image-detail-meta"><p>{modelLabel(selected.model)} · Cloudflare Workers AI</p><LikeButton count={likeCounts[selected.id] ?? selected.likes ?? 0} pending={Boolean(pendingLikes[selected.id])} disabled={!canLike} onLike={() => onLike(selected.id)} detail /></div>
-        {selected.nsfwScore === null && <p className="text-muted mt-3">未取得敏感提示分，默认遮罩展示。</p>}
+        <div className="image-detail-meta"><p>{modelLabel(selected.model)}</p><LikeButton count={likeCounts[selected.id] ?? selected.likes ?? 0} pending={Boolean(pendingLikes[selected.id])} disabled={!canLike} onLike={() => onLike(selected.id)} detail /></div>
         {selectedActions && <div className="image-detail-actions">{selectedActions}</div>}
       </>}
     </Modal>

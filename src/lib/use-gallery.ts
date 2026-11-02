@@ -140,6 +140,7 @@ export function useGallery({ scope, actorScope, grant, enabled, getHeaders }: {
     next: enabled && state.scope === scope ? state.next : null,
     visibility: state.scope === scope ? state.visibility : 'misses' as const,
     latest: latest.data?.latest ?? null,
+    ownResults: latest.data?.ownResults,
     remaining: latest.data?.remaining ?? null,
     isLoading: enabled && latest.isPending,
     isRefreshing: latest.isFetching,

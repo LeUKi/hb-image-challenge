@@ -64,12 +64,67 @@ describe('anonymous scoped gallery', () => {
     f.seed({ user: '42', score: null, attempt: 3, status: 'failed' })
     const gallery = await (await f.request()).json() as GalleryResponse
     expect(gallery.remaining).toBe(0)
+    expect(gallery.ownResults.map(result => result.id)).toEqual([legacy, latest])
+    expect(gallery.ownResults.every(result => result.remaining === gallery.remaining)).toBe(true)
     expect(gallery.latest).toMatchObject({ id: latest, model: '@cf/cloudflare/clef-flash', score: 80, remaining: 0, nsfwScore: null, width: 400, height: 600 })
     expect(gallery.items.find(item => item.id === latest)?.model).toBe('@cf/cloudflare/clef-flash')
     expect(gallery.items.find(item => item.id === legacy)?.model).toBe('@cf/cloudflare/clef-omni')
     const ownResult = await (await f.request(`/api/uploads/${latest}`)).json()
     expect(ownResult).toMatchObject({ id: latest, model: '@cf/cloudflare/clef-flash', remaining: 0 })
     expect(await (await f.request(`/api/uploads/${legacy}`)).json()).toMatchObject({ id: legacy, model: '@cf/cloudflare/clef-omni' })
+    f.sqlite.close()
+  })
+  it('returns every ready own result independently of the first gallery page or visibility, with one authoritative remaining count', async () => {
+    const f = fixture()
+    const config = { ...params, maxAttempts: 10, multiReward: true }
+    f.published.activity.judge.params.find(entry => entry.param.key === 'maxAttempts')!.value = 10
+    const older = f.seed({ user: '42', attempt: 1, score: 75, shared: false, config })
+    const latest = f.seed({ user: '42', attempt: 3, score: 80, saved: false, config })
+    f.seed({ user: '42', attempt: 2, status: 'failed', score: null, config })
+    f.seed({ user: '42', attempt: 4, status: 'processing', score: null, config })
+    const others = Array.from({ length: 26 }, (_, index) => f.seed({ user: String(100 + index), score: 30 }))
+    const first = await (await f.request()).json() as GalleryResponse
+    expect(first.items).toHaveLength(24)
+    expect(first.items.every(item => !item.own)).toBe(true)
+    expect(first.visibility).toBe('misses')
+    expect(first.ownResults.map(result => result.id)).toEqual([older, latest])
+    expect(first.ownResults).toMatchObject([
+      { id: older, attempt: 1, score: 75, remaining: 6, saved: true },
+      { id: latest, attempt: 3, score: 80, remaining: 6, saved: false },
+    ])
+    expect(first.latest).toEqual(first.ownResults.at(-1))
+    // Published limits, not the result's position on the page, determine balance.
+    expect(first.remaining).toBe(6)
+    expect(JSON.stringify(first.ownResults)).not.toMatch(/user_id|image_key|private\/|image_sha256|idempotency_key|galleryGrant/)
+    const second = await (await f.request(`/api/gallery?cursor=${first.next}`)).json() as GalleryResponse
+    expect(second.ownResults).toEqual(first.ownResults)
+    expect([...first.items, ...second.items].map(item => item.id)).toEqual([...others.reverse(), latest, older])
+    expect(second.next).toBeNull()
+    f.published.activity.status = 'ended'
+    const unlocked = await (await f.request()).json() as GalleryResponse
+    expect(unlocked.visibility).toBe('all')
+    expect(unlocked.ownResults).toEqual(first.ownResults)
+    f.sqlite.close()
+  })
+  it('isolates the complete own-result list by signed actor and hongbao, including empty and ten-attempt lists', async () => {
+    const f = fixture()
+    const config = { ...params, maxAttempts: 10 }
+    const own = Array.from({ length: 10 }, (_, index) => f.seed({ user: '42', attempt: index + 1, config }))
+    const other = f.seed({ user: '99' })
+    const foreign = f.seed({ user: '42', hongbao: 'other-packet' })
+    const first = await (await f.request('/api/gallery?limit=1')).json() as GalleryResponse
+    expect(first.ownResults.map(result => result.id)).toEqual(own)
+    expect(first.ownResults).toHaveLength(10)
+    f.viewer('99')
+    expect((await (await f.request()).json() as GalleryResponse).ownResults.map(result => result.id)).toEqual([other])
+    f.viewer('42', 'other-packet')
+    f.published.activity.id = 'other-packet'
+    expect((await (await f.request()).json() as GalleryResponse).ownResults.map(result => result.id)).toEqual([foreign])
+    f.viewer('77')
+    f.published.activity.id = identity.hongbao
+    const empty = await (await f.request()).json() as GalleryResponse
+    expect(empty.ownResults).toEqual([])
+    expect(empty.latest).toBeNull()
     f.sqlite.close()
   })
   it('keeps score-only records when retention is off', async () => {

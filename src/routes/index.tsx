@@ -17,7 +17,7 @@ import { ParticipantScope } from '../lib/participant-scope'
 import { canChooseImage, canSubmitScore, challengeProgress, confirmedSubmission, participationState, readPendingSubmission, writePendingSubmission } from '../lib/participant'
 import type { PendingSubmission } from '../lib/participant'
 import { instructionsAtom, noticeAtom, phaseAtom, resultAtom, sessionAtom } from '../lib/state'
-import { MAX_IMAGE_BYTES } from '../shared/contracts'
+import { MAX_IMAGE_BYTES, MODEL, modelLabel } from '../shared/contracts'
 import type { GalleryItem, PublicConfig, UploadResult } from '../shared/contracts'
 
 export const Route = createFileRoute('/')({ component: ChallengePage })
@@ -106,7 +106,7 @@ function ChallengePage() {
   const canSubmit = !busy && canSubmitScore(participation)
   const score = connected && !identityVerified ? undefined : result?.score ?? progress?.score
   const latestItem: GalleryItem | null = result ? {
-    id: result.id, score: result.score, nsfwScore: result.nsfwScore, saved: result.saved,
+    id: result.id, model: result.model, score: result.score, nsfwScore: result.nsfwScore, saved: result.saved,
     width: result.width, height: result.height, createdAt: 0, own: true,
     passed: result.score >= challenge.minScore && result.score <= challenge.maxScore,
   } : null
@@ -491,7 +491,7 @@ function ChallengePage() {
   return <Layout>
     <main className="challenge-page">
       <header className="challenge-intro">
-        <div className="challenge-eyebrow"><span className="context-label"><span className="status-dot" data-connected={connected} aria-hidden="true" />{connected ? '本轮挑战' : '玩法预览'}</span><span>Clef Omni · Cloudflare Workers AI</span></div>
+        <div className="challenge-eyebrow"><span className="context-label"><span className="status-dot" data-connected={connected} aria-hidden="true" />{connected ? '本轮挑战' : '玩法预览'}</span><span>{modelLabel(MODEL)} · Cloudflare Workers AI</span></div>
         <div className="title-row"><h1 className="page-title">{session.hongbao?.title || '图片挑战'}</h1><button type="button" className="icon-button" onClick={() => setModal('settings')} aria-label="浏览设置"><Settings2 size={22} aria-hidden="true" /></button></div>
         <p className="challenge-prompt">{challenge.challenge}</p>
       </header>
@@ -548,7 +548,7 @@ function ChallengePage() {
         <Gallery key={galleryScope} items={identityVerified ? gallery.items : []} next={identityVerified ? gallery.next : null} visibility={gallery.visibility} isLoading={gallery.isLoading} isRefreshing={gallery.isRefreshing} error={gallery.error} loadingMore={gallery.loadingMore} onLoadMore={() => void gallery.loadMore()} onRefresh={() => { if (session.me?.signedIn) refreshGallery.current?.() }} showNsfw={showNsfw} getHeaders={getHeaders} likeCounts={gallery.likeCounts} pendingLikes={gallery.pendingLikes} canLike={identityVerified && gallery.canLike} onLike={gallery.like} onWatch={gallery.watch}
           selected={selectedImage} onSelect={setModal} selectedSource={selectedImage?.id === resultImage?.id ? resultImage?.url : undefined} selectedActions={resultActions} minScore={challenge.minScore} maxScore={challenge.maxScore} />
       </div>
-      <footer className="challenge-footer"><p>Clef Omni · Cloudflare Workers AI</p><p>AI 分数表示匹配程度，奖励以红包站为准。</p></footer>
+      <footer className="challenge-footer"><p>{modelLabel(MODEL)} · Cloudflare Workers AI</p><p>AI 分数表示匹配程度，奖励以红包站为准。</p></footer>
     </main>
 
     <Modal open={modal === 'settings'} title="浏览设置" onClose={() => setModal(null)}>

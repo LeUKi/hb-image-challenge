@@ -1,3 +1,4 @@
+import { MODEL } from '../shared/contracts'
 import type { ChallengeConfig } from '../shared/contracts'
 import type { Identity } from './auth'
 import type { ImageType } from './images'
@@ -40,7 +41,7 @@ export async function existingAttempt(db: D1Database, identity: Identity, idempo
 export async function reserveAttempt(db: D1Database, identity: Identity, key: string, hash: string, contentType: ImageType, config: ChallengeConfig, image: { shared: boolean; width: number; height: number } | null = null): Promise<{ attempt: Attempt; created: boolean }> {
   const id = crypto.randomUUID(), now = Date.now()
   const inserted = await db.prepare(RESERVE_SQL).bind(
-    id, identity.hongbao, identity.sub, key, hash, JSON.stringify(config), contentType,
+    id, identity.hongbao, identity.sub, key, hash, JSON.stringify({ ...config, model: MODEL }), contentType,
     now, now, image?.shared ? 1 : 0, image?.width ?? null, image?.height ?? null,
     identity.hongbao, identity.sub, config.maxAttempts,
   ).first<{ id: string }>()

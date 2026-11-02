@@ -74,7 +74,7 @@ async function upload(frame, index) {
   await viewer.locator('.detail-photo img').waitFor()
   assert.match(await viewer.innerText(), /匹配评分[\s\S]*NSFW 评分[\s\S]*2\.0%/)
   assert.match(await viewer.innerText(), /70–80%/)
-  assert.match(await viewer.innerText(), /Clef Omni/)
+  assert.match(await viewer.innerText(), /Clef Flash/)
   assert.match(await viewer.innerText(), /480\s*×\s*(600|400)\s*px/)
   return result
 }

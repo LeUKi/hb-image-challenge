@@ -3,6 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useForm } from '@tanstack/react-form'
 import { ArrowRight, Check, Copy, Database, ExternalLink, HardDrive, Sparkles } from 'lucide-react'
 import { Layout } from '../components/layout'
+import { MODEL, modelLabel } from '../shared/contracts'
 
 export const Route = createFileRoute('/setup')({
   head: () => ({ meta: [{ title: '部署服务 · 图片挑战' }] }),
@@ -12,7 +13,7 @@ export const Route = createFileRoute('/setup')({
 const DEPLOY_URL = 'https://deploy.workers.cloudflare.com/?url=https://github.com/LeUKi/hb-image-challenge'
 const CREATE_HONGBAO_URL = 'https://hb.lafi.sh/new?judge=0f06222c-e8b2-4683-89d9-ae8900e66cea'
 const resources = [
-  { icon: Sparkles, title: 'AI 评分', detail: '使用你账户的 Clef Omni 模型额度。' },
+  { icon: Sparkles, title: 'AI 评分', detail: `使用你账户的 ${modelLabel(MODEL)} 模型额度。` },
   { icon: HardDrive, title: '图片保存', detail: '图片存入私有 R2，按红包选择是否保存。' },
   { icon: Database, title: '结果记录', detail: 'D1 记录上传次数与评分，供判定器核验。' },
 ]

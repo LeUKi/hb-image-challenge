@@ -13,11 +13,13 @@ describe('separate matching and NSFW model questions', () => {
     input.questions.nsfw.instructions = 'changed outside the server factory'
     expect(clefInput(png(), 'image/png', author).questions.nsfw.instructions).toBe(NSFW_QUESTION.instructions)
   })
-  it('uses one inference request and parses both probabilities independently', async () => {
+  it('uses the Flash route and body in one request and parses both probabilities independently', async () => {
     const run = vi.fn().mockResolvedValue({ answers: { match: { type: 'noul', noul: 0.7501 }, nsfw: { type: 'noul', noul: 0.875 } } })
     await expect(scoreImage({ AI: { run } } as unknown as AppEnv, png(), 'image/png', 'A cat?'))
       .resolves.toEqual({ score: 75.01, nsfwScore: 87.5 })
     expect(run).toHaveBeenCalledTimes(1)
+    expect(run).toHaveBeenCalledWith('@cf/cloudflare/clef-flash', expect.objectContaining({ model: 'clef-flash' }))
+    expect(Object.keys(run.mock.calls[0][1].questions)).toEqual(['match', 'nsfw'])
     expect(run.mock.calls[0][1].questions).toHaveProperty('nsfw.criteria.true')
   })
   it('does not treat invalid NSFW probabilities as safe, or invalid matching probabilities as a failed challenge', async () => {

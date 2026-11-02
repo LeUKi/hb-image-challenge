@@ -43,9 +43,12 @@ describe('upload workflow', () => {
     finishR2({ key: 'saved' })
     const response = await pending
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ score: 85, nsfwScore: 12, width: 1, height: 1, attempt: 1, remaining: 2, saved: true })
+    expect(await response.json()).toMatchObject({ model: '@cf/cloudflare/clef-flash', score: 85, nsfwScore: 12, width: 1, height: 1, attempt: 1, remaining: 2, saved: true })
+    const frozen = sqlite.prepare('SELECT config_json FROM image_attempts').get() as { config_json: string }
+    expect(JSON.parse(frozen.config_json)).toMatchObject({ model: '@cf/cloudflare/clef-flash' })
     const repeated = await handleApiRequest(request(), env)
     expect(repeated!.status).toBe(200)
+    expect(await repeated!.json()).toMatchObject({ model: '@cf/cloudflare/clef-flash', score: 85 })
     expect(run).toHaveBeenCalledTimes(1); expect(put).toHaveBeenCalledTimes(1)
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM image_attempts').get()).toMatchObject({ n: 1 })
     sqlite.close()

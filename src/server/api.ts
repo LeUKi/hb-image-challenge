@@ -1,4 +1,4 @@
-import { MAX_ATTEMPTS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MODEL } from '../shared/contracts'
+import { LEGACY_MODEL, MAX_ATTEMPTS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MODEL } from '../shared/contracts'
 import type { ChallengeConfig, GalleryItem, GalleryResponse, PublicConfig, UploadResult } from '../shared/contracts'
 import type { AppEnv } from './env'
 import { pageToken, platformSite, verifyIdentity } from './auth'
@@ -13,11 +13,16 @@ import type { Identity } from './auth'
 
 function json(value: unknown, status = 200): Response { return Response.json(value, { status }) }
 
+function attemptConfig(attempt: Attempt): ChallengeConfig & { model: string } {
+  const config = JSON.parse(attempt.config_json) as ChallengeConfig & { model?: string }
+  return { ...config, model: config.model ?? LEGACY_MODEL }
+}
+
 function uploadResult(attempt: Attempt, remaining?: number): UploadResult {
-  const config = JSON.parse(attempt.config_json) as ChallengeConfig
+  const config = attemptConfig(attempt)
   if (attempt.score === null) throw new Error('Ready result is missing score')
   return {
-    id: attempt.id, score: attempt.score, challenge: config.challenge,
+    id: attempt.id, model: config.model, score: attempt.score, challenge: config.challenge,
     attempt: attempt.attempt_no, remaining: remaining ?? Math.max(0, config.maxAttempts - attempt.attempt_no),
     saved: attempt.image_key !== null, nsfwScore: attempt.nsfw_score ?? null,
     width: attempt.image_width ?? null, height: attempt.image_height ?? null,
@@ -33,7 +38,7 @@ async function remainingAttempts(db: D1Database, identity: Pick<Identity, 'hongb
 async function replay(attempt: Attempt, hash: string, db: D1Database): Promise<Response> {
   if (attempt.image_sha256 !== hash) throw new ApiFailure(409, 'idempotency_conflict', '同一个上传编号不能用于不同的图片')
   if (attempt.status === 'failed' && attempt.error_code === 'duplicate_image') {
-    const config = JSON.parse(attempt.config_json) as ChallengeConfig
+    const config = attemptConfig(attempt)
     return json({
       error: '这张图片已提交过，本次已消耗 1 次机会，请换一张', code: 'duplicate_image',
       attempt: attempt.attempt_no,
@@ -42,7 +47,7 @@ async function replay(attempt: Attempt, hash: string, db: D1Database): Promise<R
   }
   if (attempt.status === 'processing') throw new ApiFailure(409, 'processing', '这张图片仍在处理，请稍后查询已有结果，不要重新上传')
   if (attempt.status === 'failed') throw new ApiFailure(502, attempt.error_code ?? 'processing_failed', '本次处理未完成，已记录这次尝试，请勿重复提交同一上传')
-  const config = JSON.parse(attempt.config_json) as ChallengeConfig
+  const config = attemptConfig(attempt)
   const remaining = await remainingAttempts(db, { hongbao: attempt.hongbao, sub: attempt.user_id }, config.maxAttempts)
   return json(uploadResult(attempt, remaining))
 }
@@ -95,7 +100,7 @@ async function judgeResult(request: Request, env: AppEnv, id: string): Promise<R
   const result = await env.DB.prepare("SELECT * FROM image_attempts WHERE id = ? AND hongbao = ? AND user_id = ? AND status = 'ready'")
     .bind(id, identity.hongbao, user).first<Attempt>()
   if (!result || result.score === null) return json({ found: false })
-  const config = JSON.parse(result.config_json) as ChallengeConfig
+  const config = attemptConfig(result)
   const passed = result.score >= config.minScore && result.score <= config.maxScore
   return json({
     found: true, id: result.id, hongbao: result.hongbao, user: result.user_id,
@@ -120,7 +125,7 @@ async function fullGallery(request: Request, env: AppEnv, identity: Identity, en
 }
 
 function passed(attempt: Attempt): boolean {
-  const config = JSON.parse(attempt.config_json) as ChallengeConfig
+  const config = attemptConfig(attempt)
   return attempt.score !== null && attempt.score >= config.minScore && attempt.score <= config.maxScore
 }
 
@@ -163,7 +168,7 @@ async function gallery(request: Request, env: AppEnv): Promise<Response> {
   const page = records.results.slice(0, limit)
   const likeCounts = await galleryLikeCounts(env.DB, scope, [...page.map(attempt => attempt.id), ...(sync.watch ?? [])])
   const items: GalleryItem[] = page.map(attempt => ({
-    id: attempt.id, score: attempt.score!, nsfwScore: attempt.nsfw_score,
+    id: attempt.id, model: attemptConfig(attempt).model, score: attempt.score!, nsfwScore: attempt.nsfw_score,
     saved: attempt.image_key !== null, createdAt: attempt.created_at,
     own: attempt.user_id === identity.sub, width: attempt.image_width,
     height: attempt.image_height, passed: passed(attempt), likes: likeCounts[attempt.id] ?? 0,

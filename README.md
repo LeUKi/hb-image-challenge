@@ -40,7 +40,7 @@ npm run deploy
 - **TanStack Start + Router**：React 服务端渲染、文件路由，Cloudflare Workers 官方 Vite adapter。
 - **TanStack Query**：服务端数据缓存与上传 mutation；**TanStack Form**：类型安全表单。
 - **Tailwind CSS 4**：简约响应式界面；**Motion**：遵循减少动画偏好；**Jotai**：交互状态，每次 SSR 请求隔离。
-- **Workers AI**：固定 `@cf/cloudflare/clef-omni` 模型，使用 AI binding。
+- **Workers AI**：固定 `@cf/cloudflare/clef-flash` 模型，使用 AI binding。
 - **R2**：私有图片存储，所有部署均包含；红包作者可按红包关闭实际图片保存。
 - **D1**：结果、一次性 nonce、幂等键和原子次数限制。
 
@@ -77,7 +77,9 @@ npm run deploy
 
 同一红包内，所有玩家共享图片文件 SHA-256 的去重占位。重复上传也消耗一次机会，但不会再次调用 AI、写入 R2 或新增作品；相同幂等请求的重试不再扣次。只在真正命中重复时显示简短提示，玩家页面不额外增加去重说明。确定的处理失败会释放原占位；仅按原文件内容去重，不保证识别压缩、裁剪或重新编码后的相似图片。已有服务升级需应用 `0004_image_dedup.sql`，默认部署命令包含迁移。
 
-模型固定为 **Clef Omni · Cloudflare Workers AI**。服务端在同次调用中分别提出作者的匹配问题和固定 NSFW 问题；作者的图片要求不能替换固定的安全问题。NSFW 分数达到 50% 或缺失安全分时，默认显示写有 **NSFW** 的模糊遮罩，点击可单张查看；浏览设置可在本浏览器关闭模糊。这个启发式分数没有经过准确率验证，遮罩也不替代服务端图片权限。
+新评分固定使用 **Clef Flash · Cloudflare Workers AI**。服务端在同次调用中分别提出作者的匹配问题和固定 NSFW 问题；作者的图片要求不能替换固定的安全问题。NSFW 分数达到 50% 或缺失安全分时，默认显示写有 **NSFW** 的模糊遮罩，点击可单张查看；浏览设置可在本浏览器关闭模糊。这个启发式分数没有经过准确率验证，遮罩也不替代服务端图片权限。
+
+从 Clef Omni 升级只需更新并重新部署 Worker；本次模型切换不新增数据库迁移，也不要求重新发布红包站判定器。每次新评分会记录实际模型，历史评分继续显示 Clef Omni，不会重新推理。Flash 与 Omni 的实际分数分布尚未对比，已有评分区间需结合自己的图片检查。
 
 图库优先随红包站 SDK 的红包、本人状态与私人结果变更合并刷新；初次进入、回到前台和本人的评分完成后立即刷新。页面可见时每 60 秒兜底拉取，隐藏时停止，无需 Durable Objects。
 
@@ -150,4 +152,4 @@ npm run check
 
 实际 Cloudflare 模型精度、免费档 CPU、Cloudflare 首次资源开通、红包站生产 JWT / 领取和一键部署流程，需要真实账号的另行验证。本地模拟器证据不代表真实模型评分质量或生产付款已测试。
 
-官方参考：[TanStack Start on Workers](https://developers.cloudflare.com/workers/framework-guides/web-apps/tanstack-start/)、[Deploy buttons](https://developers.cloudflare.com/workers/platform/deploy-buttons/)、[Clef Omni](https://developers.cloudflare.com/workers-ai/models/clef-omni/)、[红包站开发文档](https://hb.lafi.sh/help/code)。
+官方参考：[TanStack Start on Workers](https://developers.cloudflare.com/workers/framework-guides/web-apps/tanstack-start/)、[Deploy buttons](https://developers.cloudflare.com/workers/platform/deploy-buttons/)、[Clef Flash](https://developers.cloudflare.com/workers-ai/models/clef-flash/)、[红包站开发文档](https://hb.lafi.sh/help/code)。

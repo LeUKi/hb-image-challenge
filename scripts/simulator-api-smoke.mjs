@@ -47,7 +47,7 @@ function headers(player, grant) {
 async function gallery(player, grant) {
   const result = await json(`${service}/api/gallery`, { headers: headers(player, grant) })
   for (const item of result.items) {
-    assert.deepEqual(Object.keys(item).sort(), ['id', 'score', 'nsfwScore', 'saved', 'createdAt', 'own', 'width', 'height', 'passed', 'likes'].sort(), 'Gallery entries expose only anonymous presentation fields')
+    assert.deepEqual(Object.keys(item).sort(), ['id', 'model', 'score', 'nsfwScore', 'saved', 'createdAt', 'own', 'width', 'height', 'passed', 'likes'].sort(), 'Gallery entries expose only anonymous presentation fields')
     assert.equal(typeof item.own, 'boolean')
     assert.equal(typeof item.score, 'number')
   }
@@ -65,6 +65,7 @@ async function upload(who, imageIndex) {
   })
   assert.equal('galleryGrant' in result, false, 'An upload result must not grant post-claim access')
   assert.equal(result.saved, true)
+  assert.equal(result.model, '@cf/cloudflare/clef-flash')
   assert.equal(result.width, 480)
   assert.ok(result.height > 0)
   return { player, result }
@@ -88,7 +89,7 @@ assert.equal(state.hongbao.judged, 0, 'Restart the simulator before rerunning th
 assert.equal(state.paid, '0.00')
 assert.equal(config.hbSite, station)
 assert.equal(config.storage, 'r2')
-assert.equal(config.model, '@cf/cloudflare/clef-omni')
+assert.equal(config.model, '@cf/cloudflare/clef-flash')
 assert.deepEqual(
   { min: state.hongbao.params.minScore, max: state.hongbao.params.maxScore, attempts: state.hongbao.params.maxAttempts, dynamic: state.hongbao.params.scoreReward, low: state.hongbao.params.minReward, high: state.hongbao.params.reward },
   { min: 70, max: 80, attempts: 5, dynamic: true, low: 100, high: 1000 },
@@ -104,6 +105,7 @@ assert.equal(initial.items.length, 6)
 assert.equal(initial.items.some(item => item.passed), false)
 assert.equal(initial.items.some(item => item.nsfwScore === 95), true)
 assert.ok(initial.items.every(item => !item.own))
+assert.ok(initial.items.every(item => item.model === '@cf/cloudflare/clef-flash'), 'Seed uploads use the current model through the real API')
 const originalIds = new Set(initial.items.map(item => item.id))
 const sensitive = initial.items.find(item => item.nsfwScore === 95)
 await image(player, sensitive.id)
@@ -139,6 +141,8 @@ const beforeSubmit = await gallery(await identify('小明'))
 assert.equal(beforeSubmit.items.length, 7)
 assert.equal(beforeSubmit.latest.id, first.result.id)
 assert.equal(beforeSubmit.latest.score, 35)
+assert.equal(beforeSubmit.latest.model, '@cf/cloudflare/clef-flash')
+assert.equal(beforeSubmit.items.find(item => item.id === first.result.id).model, '@cf/cloudflare/clef-flash')
 assert.equal(beforeSubmit.remaining, 4)
 assert.equal((await json(`${station}/api/mine?who=${encodeURIComponent('小明')}`)).total, 0, 'An uploaded, scored image is recoverable before any judge submission')
 assert.deepEqual(await image(player, first.result.id), demoImage(8))

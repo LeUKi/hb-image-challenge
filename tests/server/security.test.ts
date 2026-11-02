@@ -81,7 +81,7 @@ describe('uploaded images and model probability', () => {
     expect(() => validateImage(new TextEncoder().encode('<svg/>'), 'image/png')).toThrow()
   })
   it('uses the documented embedded-image input and probability output', () => {
-    expect(clefInput(png(), 'image/png', params.challenge)).toMatchObject({ model: 'clef-omni', images: [{ content_type: 'image/png' }], questions: { match: { type: 'noul', instructions: params.challenge } } })
+    expect(clefInput(png(), 'image/png', params.challenge)).toMatchObject({ model: 'clef-flash', images: [{ content_type: 'image/png' }], questions: { match: { type: 'noul', instructions: params.challenge } } })
     expect(parseScore({ answers: { match: { type: 'noul', noul: 0.87425 } } })).toBe(87.43)
     for (const value of [NaN, -0.1, 1.1, '0.9', undefined]) expect(() => parseScore({ answers: { match: { type: 'noul', noul: value } } })).toThrow()
     expect(() => parseScore({ answers: { match: { type: 'score', score: 90 } } })).toThrow()

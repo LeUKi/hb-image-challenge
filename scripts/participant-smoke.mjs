@@ -68,7 +68,7 @@ async function fixture(overrides = {}, width = 390, height = 900) {
     await route.fulfill({ response })
   })
   await context.route(`${station}/sdk/v1.js`, route => route.fulfill({ contentType: 'text/javascript', body: sdkSource }))
-  await context.route(`${appBase}/api/config`, route => route.fulfill({ json: { ownerConfigured: true, hbSite: station, model: '@cf/cloudflare/clef-omni' } }))
+  await context.route(`${appBase}/api/config`, route => route.fulfill({ json: { ownerConfigured: true, hbSite: station, model: '@cf/cloudflare/clef-flash' } }))
   await context.route(`${appBase}/api/nonce`, route => route.fulfill({ json: { nonce: 'fixture-nonce' } }))
   let uploadCount = 0
   let galleryReads = 0
@@ -95,7 +95,7 @@ async function fixture(overrides = {}, width = 390, height = 900) {
     const actor = actorFor(route.request())
     await uploadGate
     if (overrides.uploadError) return route.fulfill({ status: overrides.uploadError.status ?? 409, json: overrides.uploadError.body })
-    const uploadedResult = { id: resultId, score: overrides.score ?? 80, challenge: hongbao.params.challenge, attempt: 1, remaining: overrides.remaining ?? 2, saved: overrides.saved ?? true, nsfwScore: overrides.nsfwScore === undefined ? 5 : overrides.nsfwScore, width: 1, height: 1 }
+    const uploadedResult = { id: resultId, model: '@cf/cloudflare/clef-flash', score: overrides.score ?? 80, challenge: hongbao.params.challenge, attempt: 1, remaining: overrides.remaining ?? 2, saved: overrides.saved ?? true, nsfwScore: overrides.nsfwScore === undefined ? 5 : overrides.nsfwScore, width: 1, height: 1 }
     actor.latest = uploadedResult
     actor.items = [{ ...uploadedResult, own: true, passed: uploadedResult.score >= 70, createdAt: Date.now() }, ...actor.items.filter(item => item.id !== resultId)]
     return route.fulfill({ json: uploadedResult })
@@ -268,7 +268,7 @@ try {
     assert.match(details, /匹配评分[\s\S]*80\.0%/)
     assert.match(details, /NSFW[\s\S]*5\.0%/)
     assert.match(details, /70\s*[–—~-]\s*100\s*%/)
-    assert.match(details, /Clef Omni/)
+    assert.match(details, /Clef Flash/)
     assert.match(details, /1\s*[×x]\s*1/)
     await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
     assert.equal(await frame.locator('.score-result').getByRole('button', { name: '提交这次结果', exact: true }).count(), 0)
@@ -299,6 +299,7 @@ try {
     await assertClearedUpload(frame)
     await reopenResult(frame)
     await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
+    assert.match(await viewer.innerText(), /Clef Flash/, 'A restored current result keeps its Flash attribution')
     assert.equal(uploads(), 1, 'Closing, reopening and reloading do not submit another upload')
     await closeViewer(frame)
     await chooseImage(frame, { ...picture, name: 'next-choice.png' })
@@ -351,6 +352,7 @@ try {
     await frame.locator(`[data-gallery-id="${olderId}"] .gallery-photo`).click()
     await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
     assert.match(await viewer.locator('.reward-preview').innerText(), /1\.00 LDC/, 'Reward uses the selected 80% score rather than the latest 35% score')
+    assert.match(await viewer.innerText(), /Clef Omni/, 'A historical result without model metadata keeps its Omni attribution')
     assert.equal(resultReads(), 1, 'An older own result is recovered with one authenticated read')
     assert.match(await frame.locator('.score-result').innerText(), /35\.0/, 'Inspecting an older score does not replace the latest result')
     await viewer.getByRole('button', { name: '提交这次结果', exact: true }).click()

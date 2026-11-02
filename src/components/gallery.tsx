@@ -5,6 +5,7 @@ import { EyeOff, Heart, ImageOff, Images, LoaderCircle, RefreshCw } from 'lucide
 import { assignGalleryColumns, captureGalleryAnchor, isCovered, releaseGalleryAnchorSpace, restoreGalleryAnchor } from '../lib/gallery'
 import type { GalleryAnchor } from '../lib/gallery'
 import { PrivateImageCache } from '../lib/private-images'
+import { modelLabel } from '../shared/contracts'
 import type { GalleryItem } from '../shared/contracts'
 import { Modal } from './modal'
 
@@ -143,7 +144,7 @@ export function Gallery({ items, next, visibility, isLoading, isRefreshing, erro
           <div className="image-detail-score image-detail-nsfw"><span>NSFW 评分</span><strong>{selected.nsfwScore === null ? '未返回' : `${selected.nsfwScore.toFixed(1)}%`}</strong></div>
         </div>
         <div className="image-detail-context"><span>目标区间 {minScore}–{maxScore}%</span>{selected.width && selected.height ? <span>{selected.width} × {selected.height} px</span> : null}</div>
-        <div className="image-detail-meta"><p>Clef Omni · Cloudflare Workers AI</p><LikeButton count={likeCounts[selected.id] ?? selected.likes ?? 0} pending={Boolean(pendingLikes[selected.id])} disabled={!canLike} onLike={() => onLike(selected.id)} detail /></div>
+        <div className="image-detail-meta"><p>{modelLabel(selected.model)} · Cloudflare Workers AI</p><LikeButton count={likeCounts[selected.id] ?? selected.likes ?? 0} pending={Boolean(pendingLikes[selected.id])} disabled={!canLike} onLike={() => onLike(selected.id)} detail /></div>
         {selected.nsfwScore === null && <p className="text-muted mt-3">未取得敏感提示分，默认遮罩展示。</p>}
         {selectedActions && <div className="image-detail-actions">{selectedActions}</div>}
       </>}

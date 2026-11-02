@@ -1,4 +1,12 @@
-export const MODEL = '@cf/cloudflare/clef-omni' as const
+export const MODEL_NAME = 'clef-flash' as const
+export const MODEL = `@cf/cloudflare/${MODEL_NAME}` as const
+export const LEGACY_MODEL = '@cf/cloudflare/clef-omni' as const
+
+export function modelLabel(model: string = LEGACY_MODEL): string {
+  if (model === MODEL) return 'Clef Flash'
+  if (model === LEGACY_MODEL) return 'Clef Omni'
+  return model
+}
 export const MAX_ATTEMPTS = 10
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 export const MAX_IMAGE_PIXELS = 16_000_000
@@ -37,6 +45,7 @@ export interface PublicConfig {
 
 export interface UploadResult {
   id: string
+  model?: string
   score: number
   challenge: string
   attempt: number
@@ -49,6 +58,7 @@ export interface UploadResult {
 
 export interface GalleryItem {
   id: string
+  model?: string
   score: number
   nsfwScore: number | null
   saved: boolean

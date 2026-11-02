@@ -185,26 +185,20 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
 .icon-button:hover:enabled { background: #e9efed; }
 .icon-button:disabled { color: var(--color-muted); }
 .challenge-layout { display: grid; grid-template-columns: minmax(340px, .84fr) minmax(0, 1.16fr); gap: 24px; align-items: start; }
-.challenge-workspace { position: sticky; top: 24px; min-width: 0; padding: 22px; border: 1px solid var(--color-line); border-radius: 18px; background: white; }
-.challenge-summary { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--color-line); }
-.challenge-summary h2 { color: var(--color-muted); font-size: 16px; font-weight: 400; }
-.summary-value { margin-top: 3px; font-family: var(--font-display); font-size: 28px; font-weight: 600; line-height: 1.4; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.summary-value > span { margin-left: 5px; color: var(--color-muted); font: 400 16px/1.5 var(--font-sans); letter-spacing: 0; }
-.challenge-summary .score-band { margin-top: 10px; height: 6px; }
-.pending-reward { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 20px; }
+.challenge-workspace { position: sticky; top: 24px; min-width: 0; overflow: hidden; border: 1px solid var(--color-line); border-radius: 18px; background: white; }
+.workspace-content { padding: 24px; }
+.challenge-context { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin-bottom: 18px; color: var(--color-muted); font-size: 16px; font-variant-numeric: tabular-nums; }
+.pending-reward { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 24px; background: #f1f6f4; }
 .pending-reward > div, .settle-total { display: flex; flex-direction: column; gap: 2px; color: var(--color-muted); }
-.pending-reward strong, .settle-total strong { color: var(--color-accent); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pending-reward strong, .settle-total strong { color: var(--color-ink); font-size: 24px; line-height: 1.35; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .pending-reward strong > span, .settle-total strong > span { margin-left: 6px; color: var(--color-muted); font-size: 16px; font-weight: 400; }
-.flow-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 20px; padding: 0; list-style: none; }
-.flow-steps li { display: flex; align-items: center; justify-content: center; gap: 4px; padding-bottom: 10px; border-bottom: 2px solid var(--color-line); color: var(--color-muted); font-size: 16px; white-space: nowrap; }
-.flow-steps li > span { display: inline-flex; flex: 0 0 22px; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; font-variant-numeric: tabular-nums; }
-.flow-steps li[aria-current=step] { border-color: var(--color-accent); color: var(--color-accent); font-weight: 600; }
-.flow-steps li[aria-current=step] > span { background: var(--color-accent); color: white; }
-.flow-steps li[data-done=true] { border-color: #9ccbbb; color: var(--color-accent); }
-.flow-heading { margin-bottom: 16px; }
+.pending-reward .text-action:disabled { color: var(--color-muted); }
+.flow-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
 .flow-heading h2 { font-size: 22px; font-weight: 600; line-height: 1.5; letter-spacing: -.02em; }
 .flow-heading h2:focus:not(:focus-visible) { outline: none; }
-.next-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+.flow-heading .help-button { color: var(--color-muted); margin-right: -9px; }
+.next-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 24px; }
+.next-actions:empty { display: none; }
 .next-actions > button { width: 100%; }
 .requirements-intro { color: var(--color-muted); margin-bottom: 20px; }
 .requirements-copy { padding: 18px 0; border-top: 1px solid var(--color-line); border-bottom: 1px solid var(--color-line); font-size: 17px; line-height: 1.85; overflow-wrap: anywhere; white-space: pre-wrap; }
@@ -242,13 +236,15 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
 .score-result { margin-top: 0; }
 .result-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .score-result h3 { font-size: 16px; font-weight: 400; color: var(--color-muted); }
-.score-result .result-score { margin-top: 4px; font-size: 40px; font-family: var(--font-mono); color: var(--color-accent); line-height: 1.3; }
-.result-score > span { margin-left: 3px; font-size: 22px; }
+.score-result .result-score { margin: 0; font-size: 60px; color: var(--color-accent); line-height: 1.12; }
+.result-score > span { margin-left: 4px; font-size: 25px; }
 .result-score[data-matched=false] { color: var(--color-ink); }
 .reward-preview { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px; padding: 12px 0 0; color: var(--color-muted); }
 .reward-preview strong { font-size: 21px; color: var(--color-ink); font-variant-numeric: tabular-nums; font-weight: 600; }
 .reward-preview strong span { font-size: 16px; font-weight: 400; }
-.help-trigger { display: flex; justify-content: flex-end; margin-top: 18px; padding-top: 9px; border-top: 1px solid var(--color-line); }
+.score-result .reward-preview { justify-content: flex-start; gap: 8px; padding-top: 14px; }
+.score-result .reward-preview strong { font-size: 20px; }
+.score-result > .upload-submit { margin-top: 24px; }
 .gallery-section { min-width: 0; overflow-anchor: none; }
 .gallery-heading { display: flex; align-items: center; justify-content: space-between; min-height: 44px; gap: 12px; margin-bottom: 12px; }
 .gallery-heading h2 { font-size: 22px; font-weight: 600; letter-spacing: -.03em; }
@@ -332,9 +328,9 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
   .title-row { margin-top: 9px; gap: 10px; }
   .title-row .page-title { font-size: 28px; line-height: 1.4; }
   .requirements-trigger { margin-top: 7px; }
-  .challenge-workspace { padding: 20px; border-radius: 16px; }
-  .challenge-summary { gap: 16px; padding-bottom: 17px; margin-bottom: 18px; }
-  .summary-value { font-size: 27px; }
+  .challenge-workspace { border-radius: 16px; }
+  .workspace-content { padding: 20px; }
+  .pending-reward { padding: 17px 20px; }
   .challenge-workspace .upload-placeholder { padding: 20px 10px; }
   .challenge-workspace .upload-placeholder > svg { width: 34px; height: 34px; }
   .gallery-columns, .gallery-column { gap: 10px; }
@@ -348,9 +344,9 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
   .setting-row { gap: 16px; }
 }
 @media (max-width: 359px) {
-  .challenge-workspace { padding: 16px; }
-  .challenge-summary { gap: 10px; }
-  .summary-value { font-size: 25px; }
+  .workspace-content { padding: 16px; }
+  .pending-reward { padding: 17px 16px; }
+  .score-result .result-score { font-size: 52px; }
   .score-only-record strong { font-size: 25px; }
   .gallery-score { font-size: 18px; }
 }

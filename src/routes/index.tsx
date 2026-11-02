@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useForm } from '@tanstack/react-form'
 import { useAtom } from 'jotai'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ArrowRight, BookOpen, Check, CheckCircle2, CircleHelp, ImagePlus, LoaderCircle, RotateCcw, Settings2, Sparkles, X } from 'lucide-react'
+import { ArrowRight, BookOpen, CheckCircle2, CircleHelp, ImagePlus, LoaderCircle, RotateCcw, Settings2, Sparkles, X } from 'lucide-react'
 import { Layout } from '../components/layout'
 import { Modal } from '../components/modal'
 import { ScoreActions } from '../components/score-actions'
@@ -569,11 +569,11 @@ function ChallengePage() {
   const viewingOwnResult = Boolean(selectedImage?.own)
   const pendingReward = session.me?.signedIn ? session.me.pending ?? '0.00' : '0.00'
   const unit = session.hongbao?.unit ?? 'LDC'
-  const currentAward = result ? awards.find(award => award.id === result.id) : undefined
-  const flowTitle = workflow.stage === 'choose' ? fileMeta ? '图片已选好，开始评分' : instructions ? '先看要求，再选一张图' : '选一张图片开始'
+  const showPending = challenge.multiReward && identityVerified && session.me?.signedIn && !completed
+    && (Number(pendingReward) > 0 || Boolean(result) || (remainingAttempts !== null && remainingAttempts < challenge.maxAttempts))
+  const flowTitle = workflow.stage === 'choose' ? fileMeta ? '图片已选好' : instructions ? '先看要求，再选图' : '选一张图片开始'
     : workflow.stage === 'processing' ? phase === 'identity' ? '正在验证身份' : '正在评分，请稍等'
-    : workflow.stage === 'submit' ? phase === 'submitting' ? '正在计入奖励' : '评分已保留，请重新提交'
-    : workflow.stage === 'next' ? currentAward && currentAward.reward > 0 ? '这张图已计入累计奖励' : '这张图已提交'
+    : workflow.stage === 'submit' || workflow.stage === 'next' ? '本次结果'
     : displayParticipation.title
   const feedback = notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className="notice" data-kind={notice.kind}><CircleHelp size={20} aria-hidden="true" /><div><p>{notice.text}</p>{recovery === 'identity' && !fileMeta && <button type="button" className="text-action" disabled={busy} onClick={() => void retryParticipation()}>重新验证身份<RotateCcw size={18} aria-hidden="true" /></button>}</div></div>
 
@@ -581,7 +581,7 @@ function ChallengePage() {
     const outstanding = recoverableResults.some(item => item.id !== target.id && !isSubmittedResult(item.id)) || Boolean(result && result.id !== target.id && !isSubmittedResult(result.id))
     return <ScoreActions result={target} challenge={challenge} unit={unit} award={awards.find(item => item.id === target.id)} submitted={isSubmittedResult(target.id)} completed={completed}
       completionLabel={inViewer ? participation.kind === 'claimed' && session.me?.signedIn && session.me.claim ? `已领取 ${session.me.claim.amount} ${session.me.claim.unit}` : displayParticipation.title : null}
-      showContinue={canChooseImage(displayParticipation)} canContinue={!busy && participation.kind === 'ready'} continueLabel={outstanding ? '处理待提交评分' : challenge.multiReward ? '继续上传' : '换张图片再试'} canSettle={canSettle} canSubmit={canSubmit}
+      showContinue={canChooseImage(displayParticipation)} canContinue={!busy && participation.kind === 'ready'} continueLabel={outstanding ? '处理待提交评分' : challenge.multiReward ? '继续上传' : '换张图片再试'} canSettle={canSettle} showSettlement={inViewer} canSubmit={canSubmit}
       allowed={canSubmitScore(displayParticipation)} blockedMessage={displayParticipation.description}
       submitting={phase === 'submitting'} exhausted={displayParticipation.kind === 'exhausted'} onSubmit={submitResult} onContinue={continueChallenge} onSettle={() => setModal('settle')} />
   }
@@ -604,52 +604,48 @@ function ChallengePage() {
 
       <div className="challenge-layout">
         <section className="challenge-workspace" aria-label="上传与评分" aria-busy={busy}>
-          <div className="challenge-summary">
-            <section><h2>目标评分</h2><p className="summary-value text-accent">{challenge.minScore}–{challenge.maxScore}<span>%</span></p><div className="score-band" aria-hidden="true"><span style={{ marginLeft: `${challenge.minScore}%`, width: `${Math.max(1, challenge.maxScore - challenge.minScore)}%` }} /></div></section>
-            <section><h2>{completed ? '参与状态' : remainingAttempts === null ? '上传机会' : '剩余机会'}</h2><p className="summary-value">{displayParticipation.kind === 'claimed' ? '已领取' : displayParticipation.kind === 'settled' ? '已结算' : displayParticipation.kind === 'ended' ? '已结束' : <>{remainingAttempts ?? challenge.maxAttempts}<span>次</span></>}</p></section>
-          </div>
-          {challenge.multiReward && identityVerified && session.me?.signedIn && !completed && <div className="pending-reward"><div><span>累计待领取</span><strong>{pendingReward}<span>{unit}</span></strong></div>{workflow.stage !== 'next' && <button type="button" className="text-action" disabled={!canSettle} onClick={() => setModal('settle')}>结算并领取</button>}</div>}
-
-          <ol className="flow-steps" aria-label="挑战步骤">{['选图', '评分', '领取'].map((label, index) => <li key={label} aria-current={workflow.step === index + 1 ? 'step' : undefined} data-done={workflow.step !== null && workflow.step > index + 1}><span aria-hidden="true">{workflow.step !== null && workflow.step > index + 1 ? <Check size={15} /> : index + 1}</span>{label}</li>)}</ol>
-          <div className="flow-heading" aria-live="polite" aria-atomic="true"><h2 ref={flowHeading} tabIndex={-1}>{flowTitle}</h2></div>
-          <AnimatePresence mode="wait" initial={false}>
-            {showChooser ? <motion.div key="upload" initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
-              <form onSubmit={event => { event.preventDefault(); event.stopPropagation(); void form.handleSubmit() }}>
-                <form.Field name="photo">{field => <>
-                  <input ref={inputRef} id="photo" name={field.name} type="file" tabIndex={-1} accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!canSelect} onBlur={field.handleBlur} onChange={event => selectFile(event.target.files?.[0])} aria-label="选择挑战图片" />
-                  <div className="upload-area" data-dragging={dragging} data-preview={Boolean(preview)} onDragOver={event => { event.preventDefault(); if (canSelect) setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); selectFile(event.dataTransfer.files[0]) }}>
-                    {preview ? <><button className="preview-trigger" type="button" disabled={busy} style={{ visibility: privateWorkspaceVisible ? 'visible' : 'hidden' }} onClick={() => setModal('preview')} aria-label="放大查看所选图片"><img src={preview} alt="所选挑战图片" className="upload-preview" /></button><button type="button" disabled={busy} style={{ visibility: privateWorkspaceVisible ? 'visible' : 'hidden' }} onClick={clearFile} className="remove-image" aria-label="移除图片"><X size={22} aria-hidden="true" /></button></> : <div className="upload-placeholder"><ImagePlus size={34} strokeWidth={1.4} aria-hidden="true" /><button type="button" disabled={!canSelect} className="button-secondary" onClick={() => inputRef.current?.click()}>选择图片<ArrowRight size={18} aria-hidden="true" /></button></div>}
-                  </div>
-                  {fileMeta && <div className="file-meta"><span className="file-name" style={{ visibility: privateWorkspaceVisible ? 'visible' : 'hidden' }}>{fileMeta.name}</span><button type="button" className="text-action" disabled={!canSelect} onClick={() => inputRef.current?.click()}>换一张</button></div>}
-                </>}</form.Field>
+          <div className="workspace-content">
+            {!completed && <div className="challenge-context" aria-label="挑战条件"><span>目标 {challenge.minScore}–{challenge.maxScore}%</span><span>剩余 {remainingAttempts ?? challenge.maxAttempts} 次</span></div>}
+            <div className="flow-heading"><div aria-live="polite" aria-atomic="true"><h2 ref={flowHeading} tabIndex={-1}>{flowTitle}</h2></div><button type="button" className="icon-button help-button" onClick={() => setModal('help')} aria-label="怎么玩"><CircleHelp size={21} aria-hidden="true" /></button></div>
+            <AnimatePresence mode="wait" initial={false}>
+              {showChooser ? <motion.div key="upload" initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
+                <form onSubmit={event => { event.preventDefault(); event.stopPropagation(); void form.handleSubmit() }}>
+                  <form.Field name="photo">{field => <>
+                    <input ref={inputRef} id="photo" name={field.name} type="file" tabIndex={-1} accept="image/jpeg,image/png,image/webp" className="sr-only" disabled={!canSelect} onBlur={field.handleBlur} onChange={event => selectFile(event.target.files?.[0])} aria-label="选择挑战图片" />
+                    <div className="upload-area" data-dragging={dragging} data-preview={Boolean(preview)} onDragOver={event => { event.preventDefault(); if (canSelect) setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={event => { event.preventDefault(); setDragging(false); selectFile(event.dataTransfer.files[0]) }}>
+                      {preview ? <><button className="preview-trigger" type="button" disabled={busy} style={{ visibility: privateWorkspaceVisible ? 'visible' : 'hidden' }} onClick={() => setModal('preview')} aria-label="放大查看所选图片"><img src={preview} alt="所选挑战图片" className="upload-preview" /></button><button type="button" disabled={busy} style={{ visibility: privateWorkspaceVisible ? 'visible' : 'hidden' }} onClick={clearFile} className="remove-image" aria-label="移除图片"><X size={22} aria-hidden="true" /></button></> : <div className="upload-placeholder"><ImagePlus size={34} strokeWidth={1.4} aria-hidden="true" /><button type="button" disabled={!canSelect} className="button-primary" onClick={() => inputRef.current?.click()}>选择图片</button></div>}
+                    </div>
+                    {fileMeta && <div className="file-meta"><span className="file-name" style={{ visibility: privateWorkspaceVisible ? 'visible' : 'hidden' }}>{fileMeta.name}</span><button type="button" className="text-action" disabled={!canSelect} onClick={() => inputRef.current?.click()}>换一张</button></div>}
+                  </>}</form.Field>
+                  {!viewingOwnResult && feedback}
+                  <form.Subscribe selector={state => state.values.photo}>{photo => photo && <button type="submit" className="button-primary upload-submit" disabled={busy || (!canUpload && participation.kind !== 'login') || !config.data?.ownerConfigured}>
+                    {busy || participation.kind === 'checking' ? <LoaderCircle size={19} className="animate-spin" aria-hidden="true" /> : <Sparkles size={19} aria-hidden="true" />}{phase === 'identity' ? '正在验证身份' : phase === 'processing' ? '正在评分' : participation.kind === 'checking' ? '正在核对参与状态' : participation.kind === 'login' ? '登录后继续' : connected ? recovery ? '重试上传' : '上传并评分' : '请从红包页参与'}
+                  </button>}</form.Subscribe>
+                </form>
+              </motion.div> : workflow.stage === 'submit' || workflow.stage === 'next' ? <motion.div key={`result:${result?.id ?? 'score'}`} initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
+                {result && <section className="score-result" style={{ visibility: privateWorkspaceVisible ? 'visible' : 'hidden' }}>
+                  <div className="result-summary"><p className="result-score" aria-live="polite" aria-atomic="true" data-matched={result.score >= challenge.minScore && result.score <= challenge.maxScore}><span className="sr-only">本次评分 </span>{result.score.toFixed(1)}<span>%</span></p><button type="button" className="text-action" onClick={() => setModal('result')} aria-label="查看本次结果">查看图片</button></div>
+                  {scoreActions(result)}
+                </section>}
                 {!viewingOwnResult && feedback}
-                <form.Subscribe selector={state => state.values.photo}>{photo => photo && <button type="submit" className="button-primary upload-submit" disabled={busy || (!canUpload && participation.kind !== 'login') || !config.data?.ownerConfigured}>
-                  {busy || participation.kind === 'checking' ? <LoaderCircle size={19} className="animate-spin" aria-hidden="true" /> : <Sparkles size={19} aria-hidden="true" />}{phase === 'identity' ? '正在验证身份' : phase === 'processing' ? '正在评分' : participation.kind === 'checking' ? '正在核对参与状态' : participation.kind === 'login' ? '登录后继续' : connected ? recovery ? '重试上传' : '上传并评分' : '请从红包页参与'}
-                </button>}</form.Subscribe>
-              </form>
-            </motion.div> : workflow.stage === 'submit' || workflow.stage === 'next' ? <motion.div key={`${workflow.stage}:${result?.id ?? 'score'}`} initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
-              {result && <section className="score-result" style={{ visibility: privateWorkspaceVisible ? 'visible' : 'hidden' }}>
-                <div className="result-summary"><div><h3>本次评分</h3><p className="result-score" data-matched={result.score >= challenge.minScore && result.score <= challenge.maxScore}>{result.score.toFixed(1)}<span>%</span></p></div><button type="button" className="button-secondary" onClick={() => setModal('result')}>查看本次结果<ArrowRight size={18} aria-hidden="true" /></button></div>
-                {scoreActions(result)}
-              </section>}
-              {!viewingOwnResult && feedback}
-            </motion.div> : <motion.div className="participation-panel" key={displayParticipation.kind} initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
-              <span className="participation-symbol">{displayParticipation.kind === 'checking' ? <LoaderCircle className="animate-spin" size={26} aria-hidden="true" /> : completed ? <CheckCircle2 size={26} aria-hidden="true" /> : <CircleHelp size={26} aria-hidden="true" />}</span>
-              <p>{!identityVerified && gallery.error ? gallery.error : displayParticipation.description}</p>
-              {displayParticipation.kind === 'claimed' && identityVerified && session.me?.signedIn && session.me.claim && <p className="claimed-reward">{session.me.claim.amount}<span>{session.me.claim.unit}</span></p>}
-              <div className="participation-actions">{(displayParticipation.kind === 'unconfirmed' || displayParticipation.kind === 'unavailable') && <button type="button" className="button-primary" disabled={busy} onClick={() => void retryParticipation()}><RotateCcw size={18} aria-hidden="true" />{!identityVerified ? '重新验证身份' : '重新核对'}</button>}{session.hongbao?.url && <a className="button-secondary" href={session.hongbao.url} target="_top">回红包页查看记录<ArrowRight size={18} aria-hidden="true" /></a>}</div>
-              {!viewingOwnResult && feedback}
-              {completed && result && identityVerified && <button type="button" className="text-action" onClick={() => setModal('result')}>查看本次结果<ArrowRight size={18} aria-hidden="true" /></button>}
-            </motion.div>}
-          </AnimatePresence>
+              </motion.div> : <motion.div className="participation-panel" key={displayParticipation.kind} initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
+                <span className="participation-symbol">{displayParticipation.kind === 'checking' ? <LoaderCircle className="animate-spin" size={26} aria-hidden="true" /> : completed ? <CheckCircle2 size={26} aria-hidden="true" /> : <CircleHelp size={26} aria-hidden="true" />}</span>
+                <p>{!identityVerified && gallery.error ? gallery.error : displayParticipation.description}</p>
+                {displayParticipation.kind === 'claimed' && identityVerified && session.me?.signedIn && session.me.claim && <p className="claimed-reward">{session.me.claim.amount}<span>{session.me.claim.unit}</span></p>}
+                <div className="participation-actions">{(displayParticipation.kind === 'unconfirmed' || displayParticipation.kind === 'unavailable') && <button type="button" className="button-primary" disabled={busy} onClick={() => void retryParticipation()}><RotateCcw size={18} aria-hidden="true" />{!identityVerified ? '重新验证身份' : '重新核对'}</button>}{session.hongbao?.url && <a className="button-secondary" href={session.hongbao.url} target="_top">回红包页查看记录<ArrowRight size={18} aria-hidden="true" /></a>}</div>
+                {!viewingOwnResult && feedback}
+                {completed && result && identityVerified && <button type="button" className="text-action" onClick={() => setModal('result')}>查看本次结果<ArrowRight size={18} aria-hidden="true" /></button>}
+              </motion.div>}
+            </AnimatePresence>
 
-          <div className="feedback-section">
-            {session.status === 'standalone' && <p className="notice">请从红包页打开后参与。</p>}
-            {session.error && <p role="alert" className="notice" data-kind="error">{session.error}</p>}
-            {config.isError && <div role="alert" className="notice" data-kind="error"><p>服务配置暂时无法读取。</p><button type="button" className="text-action" onClick={() => void config.refetch()}>重新读取</button></div>}
-            {config.data && !config.data.ownerConfigured && <p className="notice">服务尚未完成配置，暂时无法上传。</p>}
+            <div className="feedback-section">
+              {session.status === 'standalone' && <p className="notice">请从红包页打开后参与。</p>}
+              {session.error && <p role="alert" className="notice" data-kind="error">{session.error}</p>}
+              {config.isError && <div role="alert" className="notice" data-kind="error"><p>服务配置暂时无法读取。</p><button type="button" className="text-action" onClick={() => void config.refetch()}>重新读取</button></div>}
+              {config.data && !config.data.ownerConfigured && <p className="notice">服务尚未完成配置，暂时无法上传。</p>}
+            </div>
           </div>
-          <div className="help-trigger"><button type="button" className="text-action" onClick={() => setModal('help')}><CircleHelp size={19} aria-hidden="true" />怎么玩</button></div>
+          {showPending && <div className="pending-reward"><div><span>累计待领取</span><strong>{pendingReward}<span>{unit}</span></strong></div><button type="button" className={displayParticipation.kind === 'exhausted' ? 'button-primary' : 'text-action'} disabled={!canSettle} onClick={() => setModal('settle')}>结算并领取</button></div>}
         </section>
 
         <Gallery key={galleryScope} items={identityVerified ? gallery.items : []} next={identityVerified ? gallery.next : null} isLoading={gallery.isLoading} isRefreshing={gallery.isRefreshing} error={gallery.error} loadingMore={gallery.loadingMore} onLoadMore={() => void gallery.loadMore()} onRefresh={() => { if (session.me?.signedIn) refreshGallery.current?.() }} showNsfw={showNsfw} getHeaders={getHeaders} likeCounts={gallery.likeCounts} pendingLikes={gallery.pendingLikes} canLike={identityVerified && gallery.canLike} onLike={gallery.like} onWatch={gallery.watch}

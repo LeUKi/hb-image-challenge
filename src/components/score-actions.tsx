@@ -4,7 +4,7 @@ import type { AcceptedResult } from '../lib/participant'
 import type { ChallengeConfig, UploadResult } from '../shared/contracts'
 
 /** The workspace and image viewer share the same score and submission actions. */
-export function ScoreActions({ result, challenge, unit, award, submitted, completed, completionLabel, showContinue, canContinue, continueLabel, canSettle, canSubmit, submitting, exhausted, allowed, blockedMessage, onSubmit, onContinue, onSettle }: {
+export function ScoreActions({ result, challenge, unit, award, submitted, completed, completionLabel, showContinue, canContinue, continueLabel, canSettle, showSettlement, canSubmit, submitting, exhausted, allowed, blockedMessage, onSubmit, onContinue, onSettle }: {
   result: UploadResult
   challenge: ChallengeConfig
   unit: string
@@ -16,6 +16,7 @@ export function ScoreActions({ result, challenge, unit, award, submitted, comple
   canContinue: boolean
   continueLabel: string
   canSettle: boolean
+  showSettlement: boolean
   canSubmit: boolean
   submitting: boolean
   exhausted: boolean
@@ -32,7 +33,7 @@ export function ScoreActions({ result, challenge, unit, award, submitted, comple
     {completed ? completionLabel && <p className="viewer-participation">{completionLabel}</p> : !allowed ? <p className="upload-disclosure">{blockedMessage}</p> : <>
       {submitted ? <div className="next-actions">
         {showContinue && <button type="button" className="button-primary" disabled={!canContinue} onClick={onContinue}><ImagePlus size={19} aria-hidden="true" />{continueLabel}</button>}
-        {challenge.multiReward && <button type="button" className={exhausted ? 'button-primary' : 'button-secondary'} disabled={!canSettle} onClick={onSettle}>结算并领取</button>}
+        {challenge.multiReward && showSettlement && <button type="button" className={exhausted ? 'button-primary' : 'button-secondary'} disabled={!canSettle} onClick={onSettle}>结算并领取</button>}
       </div> : <button type="button" className="button-primary upload-submit" disabled={!canSubmit} onClick={() => void onSubmit(result)}>{submitting ? <LoaderCircle className="animate-spin" size={19} aria-hidden="true" /> : <Check size={19} aria-hidden="true" />}{submitting ? '正在计奖' : '重新提交'}</button>}
     </>}
   </>

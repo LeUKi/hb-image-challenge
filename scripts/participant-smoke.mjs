@@ -831,7 +831,7 @@ try {
     await frame.getByRole('heading', { name: title }).waitFor()
     assert.equal(await frame.locator('#photo, form').count(), 0)
     assert.equal(await frame.getByRole('button', { name: '上传并评分' }).count(), 0)
-    assert.equal(await frame.getByRole('link', { name: '回红包页查看记录' }).count(), 1)
+    assert.equal(await frame.getByRole('link', { name: '回红包页查看记录' }).count(), 0, 'The challenge is already embedded in the hongbao page')
     assert.ok(await frame.locator('body').evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${name} must fit`)
     await reloadChallenge(page)
     await frame.getByRole('heading', { name: title }).waitFor()

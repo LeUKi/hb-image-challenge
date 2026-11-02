@@ -4,7 +4,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useForm } from '@tanstack/react-form'
 import { useAtom } from 'jotai'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ArrowRight, BookOpen, CheckCircle2, CircleHelp, ImagePlus, LoaderCircle, RotateCcw, Settings2, Sparkles, X } from 'lucide-react'
+import { ArrowRight, BookOpen, CircleHelp, ImagePlus, LoaderCircle, RotateCcw, Settings2, Sparkles, X } from 'lucide-react'
 import { Layout } from '../components/layout'
 import { Modal } from '../components/modal'
 import { ScoreActions } from '../components/score-actions'
@@ -629,10 +629,10 @@ function ChallengePage() {
                 </section>}
                 {!viewingOwnResult && feedback}
               </motion.div> : <motion.div className="participation-panel" key={displayParticipation.kind} initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
-                <span className="participation-symbol">{displayParticipation.kind === 'checking' ? <LoaderCircle className="animate-spin" size={26} aria-hidden="true" /> : completed ? <CheckCircle2 size={26} aria-hidden="true" /> : <CircleHelp size={26} aria-hidden="true" />}</span>
-                <p>{!identityVerified && gallery.error ? gallery.error : displayParticipation.description}</p>
+                {!completed && <><span className="participation-symbol">{displayParticipation.kind === 'checking' ? <LoaderCircle className="animate-spin" size={26} aria-hidden="true" /> : <CircleHelp size={26} aria-hidden="true" />}</span><p>{!identityVerified && gallery.error ? gallery.error : displayParticipation.description}</p></>}
+                {displayParticipation.kind === 'settled' && <p>本次没有获得奖励。</p>}
                 {displayParticipation.kind === 'claimed' && identityVerified && session.me?.signedIn && session.me.claim && <p className="claimed-reward">{session.me.claim.amount}<span>{session.me.claim.unit}</span></p>}
-                <div className="participation-actions">{(displayParticipation.kind === 'unconfirmed' || displayParticipation.kind === 'unavailable') && <button type="button" className="button-primary" disabled={busy} onClick={() => void retryParticipation()}><RotateCcw size={18} aria-hidden="true" />{!identityVerified ? '重新验证身份' : '重新核对'}</button>}{session.hongbao?.url && <a className="button-secondary" href={session.hongbao.url} target="_top">回红包页查看记录<ArrowRight size={18} aria-hidden="true" /></a>}</div>
+                {(displayParticipation.kind === 'unconfirmed' || displayParticipation.kind === 'unavailable') && <div className="participation-actions"><button type="button" className="button-primary" disabled={busy} onClick={() => void retryParticipation()}><RotateCcw size={18} aria-hidden="true" />{!identityVerified ? '重新验证身份' : '重新核对'}</button></div>}
                 {!viewingOwnResult && feedback}
                 {completed && result && identityVerified && <button type="button" className="text-action" onClick={() => setModal('result')}>查看本次结果<ArrowRight size={18} aria-hidden="true" /></button>}
               </motion.div>}
@@ -668,7 +668,10 @@ function ChallengePage() {
     </Modal>
     {identityVerified && <Modal open={modal === 'settle' && !completed} title="结算并领取" onClose={() => setModal(null)}>
       <div className="settle-total"><span>累计待领取</span><strong>{pendingReward}<span>{unit}</span></strong></div>
-      <p>领取后结束本轮挑战，未提交的评分将不再计奖。</p>
+      <div className="settle-reminder">
+        <p>{remainingAttempts === null ? '剩余上传次数暂未读取。' : <>还可以上传 <strong>{remainingAttempts} 次</strong>。</>}每次获得的奖励都会累计。</p>
+        <p>结算领取后将结束本轮，<strong>无法再上传</strong>；未提交的评分将不再计奖。</p>
+      </div>
       <div className="settle-actions"><button type="button" className="button-secondary" disabled={busy} onClick={() => setModal(null)}>继续挑战</button><button type="button" className="button-primary" disabled={!canSettle} onClick={() => void submitResult(SETTLE_INPUT)}>{phase === 'submitting' && <LoaderCircle size={19} className="animate-spin" aria-hidden="true" />}确认结算</button></div>
       {feedback}
     </Modal>}

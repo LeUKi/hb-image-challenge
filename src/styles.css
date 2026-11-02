@@ -208,6 +208,8 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
 .challenge-workspace form .notice { margin-top: 12px; }
 .settle-total { margin: 4px 0 18px; }
 .settle-total strong { font-size: 34px; }
+.settle-reminder { display: grid; gap: 12px; }
+.settle-reminder strong { font-weight: 600; }
 .settle-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .challenge-workspace .upload-area { min-height: 220px; }
 .challenge-workspace .upload-placeholder { gap: 11px; padding: 22px 12px; }
@@ -337,7 +339,6 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
   .gallery-score { font-size: 19px; right: 6px; bottom: 6px; padding: 3px 6px; }
   .gallery-like { left: 6px; padding: 8px; }
   .participation-panel h2 { font-size: 24px; }
-  .participation-actions > .button-secondary { width: 100%; }
   .modal-overlay { padding: 20px 12px; }
   .modal-panel { padding: 20px; border-radius: 16px; }
   .modal-heading { margin-bottom: 14px; }

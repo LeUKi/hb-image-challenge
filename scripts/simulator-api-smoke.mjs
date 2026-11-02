@@ -4,7 +4,7 @@ import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { demoImage } from './demo-images.mjs'
 
-// Run against a freshly started `npm run simulator`. This consumes two of
+// Run against a freshly started `npm run simulator`. This consumes four of
 // 小明's local attempts plus 小刚's final attempt for a cross-player duplicate,
 // and settles one simulated reward. It never resets or ends the activity;
 // restarting the simulator restores its seeded state.
@@ -91,8 +91,8 @@ assert.equal(config.hbSite, station)
 assert.equal(config.storage, 'r2')
 assert.equal(config.model, '@cf/cloudflare/clef-flash')
 assert.deepEqual(
-  { min: state.hongbao.params.minScore, max: state.hongbao.params.maxScore, attempts: state.hongbao.params.maxAttempts, dynamic: state.hongbao.params.scoreReward, low: state.hongbao.params.minReward, high: state.hongbao.params.reward },
-  { min: 70, max: 80, attempts: 5, dynamic: true, low: 100, high: 1000 },
+  { min: state.hongbao.params.minScore, max: state.hongbao.params.maxScore, attempts: state.hongbao.params.maxAttempts, multiple: state.hongbao.params.multiReward, dynamic: state.hongbao.params.scoreReward, low: state.hongbao.params.minReward, high: state.hongbao.params.reward },
+  { min: 70, max: 80, attempts: 5, multiple: true, dynamic: true, low: 100, high: 1000 },
   'The expected 70–80% → 1.00–10.00 LDC scenario must be loaded',
 )
 
@@ -197,30 +197,91 @@ assert.equal(pageCannotJudge.status, 401, 'A page JWT cannot query the judge-onl
 
 const succeeded = await post(`${station}/api/submit`, { who: '小明', input: second.result.id })
 assert.deepEqual(
-  { judged: succeeded.result.judged, claimed: succeeded.result.claimed, settled: succeeded.result.settled, amount: succeeded.result.amount, unit: succeeded.result.unit },
-  { judged: true, claimed: true, settled: true, amount: '5.50', unit: 'LDC' },
+  { judged: succeeded.result.judged, claimed: succeeded.result.claimed, settled: succeeded.result.settled, added: succeeded.result.added, pending: succeeded.result.pending },
+  { judged: true, claimed: false, settled: false, added: '5.50', pending: '5.50' },
 )
-assert.equal(succeeded.state.paid, '5.50')
+assert.equal(succeeded.state.paid, '0.00')
+const firstReward = await json(`${station}/api/me?who=${encodeURIComponent('小明')}`)
+assert.equal(firstReward.pending, '5.50')
+assert.equal(firstReward.settled, null)
+assert.equal(firstReward.myView.data.v, 2)
+assert.equal(firstReward.myView.data.multiReward, true)
+assert.equal(firstReward.myView.data.reward, 550)
+assert.equal(firstReward.myView.data.resultId, second.result.id)
+assert.equal(firstReward.myView.data.passed, true)
+assert.equal(firstReward.myView.data.remaining, 3)
+assert.equal('galleryGrant' in firstReward.myView.data, false, 'A qualifying result must not unlock other successes before settlement')
+assert.equal((await gallery(await identify('小明'))).visibility, 'misses')
+const repeated = await post(`${station}/api/submit`, { who: '小明', input: second.result.id })
+assert.equal(repeated.result.judged, true)
+assert.equal(repeated.result.added, '0.00')
+assert.equal(repeated.result.pending, '5.50')
+assert.equal(repeated.result.settled, false)
+assert.deepEqual((await json(`${station}/api/me?who=${encodeURIComponent('小明')}`)).myView, firstReward.myView, 'Replaying an accepted result preserves the existing ledger')
+
+const third = await upload('小明', 10)
+assert.deepEqual({ score: third.result.score, attempt: third.result.attempt, remaining: third.result.remaining }, { score: 91, attempt: 3, remaining: 2 })
+const outside = await post(`${station}/api/submit`, { who: '小明', input: third.result.id })
+assert.equal(outside.result.added, '0.00')
+assert.equal(outside.result.pending, '5.50')
+assert.equal(outside.result.settled, false)
+
+const fourth = await upload('小明', 11)
+assert.deepEqual({ score: fourth.result.score, attempt: fourth.result.attempt, remaining: fourth.result.remaining }, { score: 72, attempt: 4, remaining: 1 })
+const secondReward = await post(`${station}/api/submit`, { who: '小明', input: fourth.result.id })
+assert.deepEqual(
+  { judged: secondReward.result.judged, claimed: secondReward.result.claimed, settled: secondReward.result.settled, added: secondReward.result.added, pending: secondReward.result.pending },
+  { judged: true, claimed: false, settled: false, added: '2.80', pending: '8.30' },
+)
+assert.equal(secondReward.state.paid, '0.00')
+const beforeSettlement = await json(`${station}/api/me?who=${encodeURIComponent('小明')}`)
+assert.equal(beforeSettlement.pending, '8.30')
+assert.equal(beforeSettlement.settled, null)
+assert.equal(beforeSettlement.myView.data.remaining, 1)
+assert.equal('galleryGrant' in beforeSettlement.myView.data, false)
+assert.deepEqual(beforeSettlement.myView.data.results.map(item => ({ id: item.id, score: item.score, reward: item.reward })), [
+  { id: first.result.id, score: 35, reward: 0 },
+  { id: second.result.id, score: 75, reward: 550 },
+  { id: third.result.id, score: 91, reward: 0 },
+  { id: fourth.result.id, score: 72, reward: 280 },
+])
+const beforeSettlementGallery = await gallery(await identify('小明'))
+assert.equal(beforeSettlementGallery.visibility, 'misses')
+assert.equal(beforeSettlementGallery.items.length, 10, 'Other participants’ two qualifying images remain private during accumulation')
+assert.equal(beforeSettlementGallery.remaining, 1)
+console.log('PASS 75% 与 72% 两张合格图片分别累计 5.50、2.80 LDC；91% 不加奖，同一结果重放不重复累计；刷新可恢复待领取 8.30，成功图库仍私有。')
+
+const settled = await post(`${station}/api/submit`, { who: '小明', input: '结算' })
+assert.deepEqual(
+  { judged: settled.result.judged, claimed: settled.result.claimed, settled: settled.result.settled, amount: settled.result.amount, unit: settled.result.unit },
+  { judged: true, claimed: true, settled: true, amount: '8.30', unit: 'LDC' },
+)
+assert.equal(settled.state.paid, '8.30')
 const me = await json(`${station}/api/me?who=${encodeURIComponent('小明')}`)
-assert.equal(me.settled, '5.50')
-assert.equal(me.myView.data.reward, 550)
-assert.equal(me.myView.data.resultId, second.result.id)
+assert.equal(me.pending, '0.00')
+assert.equal(me.settled, '8.30')
+assert.equal(me.myView.data.reward, 280)
+assert.equal(me.myView.data.resultId, fourth.result.id)
 assert.equal(me.myView.data.passed, true)
-assert.equal(me.myView.data.remaining, 3)
+assert.equal(me.myView.data.remaining, 1, 'Settlement preserves actual remaining uploads rather than fabricating exhaustion')
+assert.deepEqual(me.myView.data.results, beforeSettlement.myView.data.results)
 const grant = me.myView.data.galleryGrant
 assert.match(grant, /^[a-f0-9]{64}$/)
-assert.equal(JSON.stringify(succeeded.state).includes(grant), false, 'The capability must stay out of the public activity snapshot')
-console.log('PASS 75% 经真实判定器在 70–80% 区间线性结算 5.50 LDC；许可仅存在已提交私人视图。')
+assert.equal(JSON.stringify(settled.state).includes(grant), false, 'The capability must stay out of the public activity snapshot')
+const settledReplay = await post(`${station}/api/submit`, { who: '小明', input: '结算' })
+assert.deepEqual(settledReplay.result, { judged: false, reason: 'already_claimed' }, 'A settled participant cannot claim the cumulative reward again')
+assert.equal(settledReplay.state.paid, '8.30')
+console.log('PASS 主动“结算”一次领取累计 8.30 LDC；再次结算被平台拒绝；图库许可到结算才进入私人视图。')
 
 const refreshedPlayer = await identify('小明')
 const lockedWithoutGrant = await gallery(refreshedPlayer)
 assert.equal(lockedWithoutGrant.visibility, 'misses', 'Result checking or settlement alone must not replace the bound private capability')
 const unlocked = await gallery(refreshedPlayer, grant)
 assert.equal(unlocked.visibility, 'all')
-assert.equal(unlocked.items.length, 10)
-assert.equal(unlocked.remaining, 3)
-assert.equal(unlocked.latest.id, second.result.id)
-assert.equal(unlocked.latest.remaining, 3)
+assert.equal(unlocked.items.length, 12)
+assert.equal(unlocked.remaining, 1)
+assert.equal(unlocked.latest.id, fourth.result.id)
+assert.equal(unlocked.latest.remaining, 1)
 const otherSuccesses = unlocked.items.filter(item => !item.own && item.passed)
 assert.equal(otherSuccesses.length, 2)
 for (const item of otherSuccesses) {
@@ -228,7 +289,7 @@ for (const item of otherSuccesses) {
   assert.equal((await response(`${service}/api/images/${item.id}`, { headers: headers(refreshedPlayer) })).status, 404)
   await image(refreshedPlayer, item.id, grant)
 }
-console.log('PASS 领取后刷新：私人许可解锁全部 10 条共享评分和原图，最新结果/剩余 3 次准确恢复。')
+console.log('PASS 领取后刷新：私人许可解锁全部 12 条共享评分和原图，最新结果/剩余 1 次准确恢复。')
 
 const otherPlayer = await identify('小红')
 const otherState = await json(`${station}/api/me?who=${encodeURIComponent('小红')}`)
@@ -241,7 +302,8 @@ const foreignSuccess = otherSuccesses.find(item => !othersGallery.items.some(vis
 assert.ok(foreignSuccess, 'At least one other participant’s successful upload must remain hidden from 小红')
 assert.equal((await response(`${service}/api/images/${foreignSuccess.id}`, { headers: headers(otherPlayer, grant) })).status, 403)
 const mine = await json(`${station}/api/mine?who=${encodeURIComponent('小明')}`)
-assert.equal(mine.total, 2)
-assert.deepEqual(mine.items.map(item => item.claimed), [true, false])
-console.log('PASS 未领取的小红无法借用许可读取图库或成功原图；私人提交记录保留一次失败、一次成功。')
-console.log('官方模拟器 + 真实产品 API 全流程通过。未调用真实 AI、未产生真实资金；本轮消耗小明 2 次模拟上传及小刚 1 次重复上传，请重启模拟器恢复体验初态。')
+assert.equal(mine.total, 6)
+assert.deepEqual(mine.items.map(item => item.claimed), [true, false, false, false, false, false])
+assert.deepEqual(mine.items.filter(item => item.added !== '0.00').map(item => item.added), ['2.80', '5.50'])
+console.log('PASS 未领取的小红无法借用许可读取图库或成功原图；私人记录完整保留两张加奖、未达标、重放及最终结算。')
+console.log('官方模拟器 + 真实产品 API 全流程通过。未调用真实 AI、未产生真实资金；本轮消耗小明 4 次模拟上传及小刚 1 次重复上传，请重启模拟器恢复体验初态。')

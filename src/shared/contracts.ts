@@ -16,6 +16,7 @@ export interface ChallengeConfig {
   minScore: number
   maxScore: number
   maxAttempts: number
+  multiReward: boolean
   saveImages: boolean
   reward: number
   scoreReward: boolean
@@ -27,6 +28,7 @@ export const DEFAULT_CHALLENGE: ChallengeConfig = {
   minScore: 70,
   maxScore: 100,
   maxAttempts: 3,
+  multiReward: false,
   saveImages: true,
   reward: 100,
   scoreReward: false,

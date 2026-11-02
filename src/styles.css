@@ -191,6 +191,13 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
 .summary-value { margin-top: 3px; font-family: var(--font-display); font-size: 28px; font-weight: 600; line-height: 1.4; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .summary-value > span { margin-left: 5px; color: var(--color-muted); font: 400 16px/1.5 var(--font-sans); letter-spacing: 0; }
 .challenge-summary .score-band { margin-top: 10px; height: 6px; }
+.pending-reward { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 20px; }
+.pending-reward > div, .settle-total { display: flex; flex-direction: column; gap: 2px; color: var(--color-muted); }
+.pending-reward strong, .settle-total strong { color: var(--color-accent); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pending-reward strong > span, .settle-total strong > span { margin-left: 6px; color: var(--color-muted); font-size: 16px; font-weight: 400; }
+.settle-total { margin: 4px 0 18px; }
+.settle-total strong { font-size: 34px; }
+.settle-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; margin-top: 24px; }
 .challenge-workspace .upload-area { min-height: 220px; }
 .challenge-workspace .upload-placeholder { gap: 11px; padding: 22px 12px; }
 .challenge-workspace .upload-placeholder > svg { margin: 0; }

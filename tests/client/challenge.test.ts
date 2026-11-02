@@ -37,4 +37,10 @@ describe('reward shown before submission', () => {
     const config = displayedChallenge({ params: { maxAttempts: 999, reward: 2.5, minReward: -1, minScore: Number.NaN } } as unknown as HbHongbao)
     expect(config).toMatchObject({ maxAttempts: 3, reward: 100, minReward: 1, minScore: 70 })
   })
+  it('shows multiple rewards only for an explicit compatible author switch', () => {
+    for (const value of [undefined, null, 'true', false]) {
+      expect(displayedChallenge({ params: { multiReward: value } } as unknown as HbHongbao).multiReward).toBe(false)
+    }
+    expect(displayedChallenge({ params: { multiReward: true } } as unknown as HbHongbao).multiReward).toBe(true)
+  })
 })

@@ -1,5 +1,6 @@
 /* global document, window */
 import assert from 'node:assert/strict'
+import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { chromium } from 'playwright-core'
@@ -15,6 +16,7 @@ for (const address of [station, service]) {
 const pageOrigin = `http://localhost:${Number(new URL(station).port) + 1}`
 const initial = await (await fetch(`${station}/api/state`)).json()
 assert.equal(initial.hongbao.judged, 0, 'Restart the simulator for a clean browser test')
+assert.equal(initial.hongbao.params.multiReward, true, 'Load the cumulative reward scenario')
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true })
 const errors = []
 let activeFrame = null
@@ -75,7 +77,7 @@ async function upload(frame, index) {
   assert.match(await viewer.innerText(), /匹配评分[\s\S]*NSFW 评分[\s\S]*2\.0%/)
   assert.match(await viewer.innerText(), /70–80%/)
   assert.match(await viewer.innerText(), /Clef Flash/)
-  assert.match(await viewer.innerText(), /480\s*×\s*(600|400)\s*px/)
+  assert.match(await viewer.innerText(), /480\s*×\s*(600|400|540|440)\s*px/)
   return result
 }
 
@@ -158,25 +160,90 @@ try {
   assert.equal(await frame.getByRole('dialog').count(), 1)
   assert.match(await frame.getByRole('dialog').innerText(), /35\.0%/)
   await frame.getByRole('button', { name: '提交这次结果', exact: true }).click()
-  await frame.getByRole('button', { name: '换张图片再试', exact: true }).click()
+  await frame.getByRole('button', { name: '继续上传', exact: true }).click()
   await frame.getByRole('dialog').waitFor({ state: 'hidden' })
-  await upload(frame, 9)
+  const second = await upload(frame, 9)
   await frame.locator('.result-score').filter({ hasText: '75.0' }).waitFor()
   await frame.locator('.reward-preview').filter({ hasText: '5.50' }).waitFor()
   await frame.getByRole('button', { name: '提交这次结果', exact: true }).click()
-  await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
-  await waitCount(frame, 10)
-  assert.equal(await frame.locator('#photo').count(), 0)
-  await frame.getByRole('dialog', { name: '图片详情', exact: true }).getByRole('button', { name: '关闭弹窗', exact: true }).click()
+  await frame.getByRole('button', { name: '继续上传', exact: true }).waitFor()
+  await waitCount(frame, 8)
+  const firstReward = await api(`/api/me?who=${encodeURIComponent('小明')}`)
+  assert.equal(firstReward.pending, '5.50')
+  assert.equal(firstReward.settled, null)
+  assert.equal(firstReward.myView.data.reward, 550)
+  assert.equal('galleryGrant' in firstReward.myView.data, false, 'A qualifying image does not reveal the private gallery grant while accumulation continues')
+  assert.equal((await api('/api/state')).paid, '0.00')
+  assert.equal(await frame.locator('#photo').count(), 1, 'A first qualifying result keeps the upload flow available')
+  await frame.getByRole('button', { name: '继续上传', exact: true }).click()
   await frame.getByRole('dialog').waitFor({ state: 'hidden' })
   await frame.goto(pageOrigin, { waitUntil: 'domcontentloaded' })
-  await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+  await frame.getByText('累计待领取', { exact: true }).waitFor()
+  assert.match(await frame.locator('body').innerText(), /累计待领取[\s\S]*5\.50/)
+  assert.equal(await frame.getByRole('dialog').count(), 0, 'Refreshing accumulated rewards restores the page without reopening the viewer')
+  await waitCount(frame, 8)
+  await frame.locator(`[data-gallery-id="${second.id}"] .gallery-photo`).click()
+  await frame.getByRole('button', { name: '继续上传', exact: true }).waitFor()
+  assert.equal(await frame.getByRole('button', { name: '提交这次结果', exact: true }).count(), 0, 'An accepted image stays accepted after refresh')
+  await frame.getByRole('button', { name: '继续上传', exact: true }).click()
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' })
+  const repeated = await frame.evaluate(id => window.hb.submit(id), second.id)
+  assert.deepEqual({ judged: repeated.judged, added: repeated.added, pending: repeated.pending, settled: repeated.settled }, { judged: true, added: '0.00', pending: '5.50', settled: false })
+
+  const third = await upload(frame, 10)
+  assert.equal(third.score, 91)
+  await frame.getByRole('button', { name: '提交这次结果', exact: true }).click()
+  await frame.getByRole('button', { name: '继续上传', exact: true }).click()
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' })
+  const fourth = await upload(frame, 11)
+  assert.equal(fourth.score, 72)
+  await frame.locator('.reward-preview').filter({ hasText: '2.80' }).waitFor()
+  await frame.getByRole('button', { name: '提交这次结果', exact: true }).click()
+  await frame.getByRole('button', { name: '继续上传', exact: true }).waitFor()
   await waitCount(frame, 10)
+  const secondReward = await api(`/api/me?who=${encodeURIComponent('小明')}`)
+  assert.equal(secondReward.pending, '8.30')
+  assert.equal(secondReward.settled, null)
+  assert.equal(secondReward.myView.data.remaining, 1)
+  assert.equal('galleryGrant' in secondReward.myView.data, false)
+  assert.deepEqual(secondReward.myView.data.results.map(item => ({ id: item.id, score: item.score, reward: item.reward })), [
+    { id: first.id, score: 35, reward: 0 }, { id: second.id, score: 75, reward: 550 },
+    { id: third.id, score: 91, reward: 0 }, { id: fourth.id, score: 72, reward: 280 },
+  ])
+  assert.equal((await api('/api/state')).paid, '0.00')
+  await frame.getByRole('button', { name: '继续上传', exact: true }).click()
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' })
+  await frame.getByText('累计待领取', { exact: true }).waitFor()
+  assert.match(await frame.locator('body').innerText(), /累计待领取[\s\S]*8\.30/)
+  await page.locator('iframe').first().screenshot({ path: 'shots/simulator-accumulated-reward.png' })
+  await frame.getByRole('button', { name: '结算并领取', exact: true }).click()
+  await frame.getByRole('button', { name: '确认结算', exact: true }).waitFor()
+  assert.equal((await api(`/api/me?who=${encodeURIComponent('小明')}`)).settled, null, 'Opening settlement confirmation does not settle the player')
+  await frame.locator('.modal-overlay').click({ position: { x: 5, y: 5 } })
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' })
+  assert.equal((await api(`/api/me?who=${encodeURIComponent('小明')}`)).pending, '8.30')
+  await frame.getByRole('button', { name: '结算并领取', exact: true }).click()
+  await frame.getByRole('button', { name: '确认结算', exact: true }).click()
+  await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+  await waitCount(frame, 12)
+  assert.equal(await frame.locator('#photo').count(), 0)
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' })
+  const settled = await api(`/api/me?who=${encodeURIComponent('小明')}`)
+  assert.equal(settled.settled, '8.30')
+  assert.equal(settled.pending, '0.00')
+  assert.match(settled.myView.data.galleryGrant, /^[a-f0-9]{64}$/)
+  assert.equal((await api('/api/state')).paid, '8.30')
+  const duplicateSettlement = await frame.evaluate(() => window.hb.submit('结算'))
+  assert.deepEqual(duplicateSettlement, { judged: false, reason: 'already_claimed' })
+  assert.equal((await api('/api/state')).paid, '8.30', 'Repeated settlement never pays twice')
+  await frame.goto(pageOrigin, { waitUntil: 'domcontentloaded' })
+  await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+  await waitCount(frame, 12)
   assert.equal(await frame.locator('#photo').count(), 0, 'Reload never reopens upload after a claim')
   const scoreColors = await frame.locator('.gallery-score').evaluateAll(nodes => nodes.map(node => ({ passed: node.dataset.passed === 'true', color: window.getComputedStyle(node).color })))
   assert.ok(scoreColors.filter(item => item.passed).every(item => item.color === 'rgb(143, 231, 180)'))
   assert.ok(scoreColors.filter(item => !item.passed).every(item => item.color === 'rgb(255, 255, 255)'))
-  console.log('PASS 真实上传后清空选择框并自动打开统一查看器，模型字段/尺寸/奖励齐全；关闭摘要重开、刷新不弹窗、画廊重开提交→35%失败→75%预计/实际5.50LDC→领取后刷新禁上传。')
+  console.log('PASS 真实上传清空选择框并复用查看器；35%未通过→75%累计5.50→刷新恢复/同图不重复加奖→91%零奖→72%累计2.80；确认弹窗后一次领取8.30，私人图库仅此时解锁，刷新继续禁上传。')
 
   // Leave the reader partway through the gallery, then cause another player’s
   // judgment. The real station emits its SDK update; no manual refresh click.
@@ -195,15 +262,24 @@ try {
   })
   const { nonce } = await api('/api/nonce', {}, service)
   const signed = await api('/api/identity', { who: '小红', nonce })
-  const resultResponse = await fetch(`${service}/api/upload`, { method: 'POST', headers: { Authorization: `Bearer ${signed.token}`, 'Content-Type': 'image/png', 'X-Hb-Nonce': nonce, 'X-Hb-Gallery-Consent': 'v1', 'Idempotency-Key': randomUUID() }, body: demoImage(10) })
+  const incomingImage = Buffer.from(await frame.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 480; canvas.height = 440
+    const drawing = canvas.getContext('2d')
+    drawing.fillStyle = '#604d78'; drawing.fillRect(0, 0, 480, 440)
+    drawing.fillStyle = '#e8d8c5'; drawing.fillRect(80, 90, 320, 260)
+    return canvas.toDataURL('image/png').split(',')[1]
+  }), 'base64')
+  const resultResponse = await fetch(`${service}/api/upload`, { method: 'POST', headers: { Authorization: `Bearer ${signed.token}`, 'Content-Type': 'image/png', 'X-Hb-Nonce': nonce, 'X-Hb-Gallery-Consent': 'v1', 'Idempotency-Key': randomUUID() }, body: incomingImage })
   assert.ok(resultResponse.ok)
   const incoming = await resultResponse.json()
+  assert.equal(incoming.score, 57)
   // The kit broadcasts within one host's multi layout, as the real platform
   // does. Independent host tabs do not subscribe to changes in the kit server.
   const otherFrame = page.frames().filter(frame => frame.url().startsWith(pageOrigin))[1]
   const otherReceipt = await otherFrame.evaluate(id => window.hb.submit(id), incoming.id)
   assert.equal(otherReceipt.judged, true)
-  await waitCount(frame, 11)
+  await waitCount(frame, 13)
   const after = await frame.evaluate(id => {
     const nodes = [...document.querySelectorAll('[data-gallery-id]')]
     const anchor = nodes.find(node => node.dataset.galleryId === id)
@@ -255,7 +331,7 @@ try {
   await other.page.locator('#end').click()
   await other.frame.getByRole('heading', { name: /本次活动已结束|本次挑战已结算/ }).waitFor()
   // Verify the documented visible 60s fallback as well as SDK-driven updates.
-  await waitCount(other.frame, 11, 75_000)
+  await waitCount(other.frame, 13, 75_000)
   console.log(`活动结束后全部画廊可见：${Date.now() - endedAt}ms`)
   const syncedHeart = other.frame.locator(`[data-gallery-id="${likedId}"] .gallery-like[data-pending=false]`)
   await syncedHeart.waitFor()

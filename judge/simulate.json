@@ -8,7 +8,8 @@
     "saveImages": true,
     "reward": 1000,
     "scoreReward": true,
-    "minReward": 100
+    "minReward": 100,
+    "multiReward": true
   },
   "hongbao": {
     "title": "找一只猫",

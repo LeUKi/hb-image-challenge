@@ -14,6 +14,7 @@ export function displayedChallenge(hongbao?: HbHongbao): ChallengeConfig {
     minScore: number('minScore', 0, 100),
     maxScore: number('maxScore', 0, 100),
     maxAttempts: number('maxAttempts', 1, MAX_ATTEMPTS, true),
+    multiReward: typeof params.multiReward === 'boolean' ? params.multiReward : false,
     saveImages: typeof params.saveImages === 'boolean' ? params.saveImages : DEFAULT_CHALLENGE.saveImages,
     reward: number('reward', 1, Number.MAX_SAFE_INTEGER, true),
     minReward: number('minReward', 1, Number.MAX_SAFE_INTEGER, true),

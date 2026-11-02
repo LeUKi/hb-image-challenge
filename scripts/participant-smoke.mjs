@@ -13,6 +13,7 @@ const resultId = '2b990cc9-45da-44e2-8ce5-45a7bd6257d3'
 const picture = { name: 'tiny.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j7ioAAAAASUVORK5CYII=', 'base64') }
 const normalMe = { signedIn: true, name: '小明', open: true, cooldownUntil: null, claim: null, registered: false, pending: null, settled: false }
 const hongbao = { id: 'lifecycle-test', title: '猫咪挑战', url: 'https://hb.lafi.sh/lifecycle-test', code: true, status: 'active', unit: 'LDC', params: { challenge: '这张图片里有一只猫', minScore: 70, maxScore: 100, maxAttempts: 3, saveImages: true } }
+const multiHongbao = { ...hongbao, params: { ...hongbao.params, multiReward: true, maxScore: 80, maxAttempts: 5, minReward: 100, reward: 1000, scoreReward: true } }
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true })
 const errors = []
 const debug = process.env.SMOKE_DEBUG === '1'
@@ -89,15 +90,17 @@ async function fixture(overrides = {}, width = 390, height = 900) {
   }
   let releaseUpload
   const uploadGate = overrides.holdUpload ? new Promise(resolve => { releaseUpload = resolve }) : Promise.resolve()
+  let releaseGallery
+  const galleryGate = overrides.holdGallery ? new Promise(resolve => { releaseGallery = resolve }) : Promise.resolve()
   await context.route(`${appBase}/api/upload`, async route => {
     assert.equal(route.request().headers()['x-hb-gallery-consent'], 'v1')
     uploadCount += 1
     const actor = actorFor(route.request())
     await uploadGate
     if (overrides.uploadError) return route.fulfill({ status: overrides.uploadError.status ?? 409, json: overrides.uploadError.body })
-    const uploadedResult = { id: resultId, model: '@cf/cloudflare/clef-flash', score: overrides.score ?? 80, challenge: hongbao.params.challenge, attempt: 1, remaining: overrides.remaining ?? 2, saved: overrides.saved ?? true, nsfwScore: overrides.nsfwScore === undefined ? 5 : overrides.nsfwScore, width: 1, height: 1 }
+    const uploadedResult = { id: resultId, model: '@cf/cloudflare/clef-flash', score: overrides.score ?? 80, challenge: hongbao.params.challenge, attempt: 1, remaining: overrides.remaining ?? 2, saved: overrides.saved ?? true, nsfwScore: overrides.nsfwScore === undefined ? 5 : overrides.nsfwScore, width: 1, height: 1, ...overrides.uploadResults?.[uploadCount - 1] }
     actor.latest = uploadedResult
-    actor.items = [{ ...uploadedResult, own: true, passed: uploadedResult.score >= 70, createdAt: Date.now() }, ...actor.items.filter(item => item.id !== resultId)]
+    actor.items = [{ ...uploadedResult, own: true, passed: uploadedResult.score >= 70, createdAt: Date.now() }, ...actor.items.filter(item => item.id !== uploadedResult.id)]
     return route.fulfill({ json: uploadedResult })
   })
   await context.route(`${appBase}/api/uploads/*`, route => {
@@ -110,6 +113,7 @@ async function fixture(overrides = {}, width = 390, height = 900) {
   })
   await context.route(`${appBase}/api/gallery**`, async route => {
     galleryReads += 1
+    await galleryGate
     assert.match(route.request().headers().authorization, /^Bearer test-only-token:\d+$/)
     assert.ok(!route.request().url().includes('test-only-token'))
     const actor = actorFor(route.request())
@@ -191,16 +195,26 @@ async function fixture(overrides = {}, width = 390, height = 900) {
       else if (m.type === 'login') reply({ signedIn: true })
       else if (m.type === 'submit') {
         window.fixture.submits += 1
-        const receipt = window.fixture.receipt
+        const receipt = window.fixture.receipts?.shift() ?? window.fixture.receipt
         const actor = window.fixture.userId
         const finish = () => {
         if (receipt.judged && actor === window.fixture.userId) {
           window.fixture.mine.unshift({ n: window.fixture.submits, at: new Date().toISOString(), input: m.input, claimed: receipt.claimed })
         }
         if (receipt.judged && window.fixture.accepted !== false && actor === window.fixture.userId) {
-          const me = { ...window.fixture.me, ...(receipt.claimed ? { claim: { amount: receipt.amount, unit: receipt.unit, payment: 'paid' }, settled: true, open: false, why: 'already_claimed' } : receipt.settled ? { settled: true, open: false, why: 'already_claimed' } : {}) }
+          const me = { ...window.fixture.me, ...(typeof receipt.pending === 'string' ? { pending: receipt.pending } : {}), ...(receipt.claimed ? { claim: { amount: receipt.amount, unit: receipt.unit, payment: 'paid' }, settled: true, open: false, why: 'already_claimed' } : receipt.settled ? { settled: true, open: false, why: 'already_claimed' } : {}) }
           window.fixture.push('me', me)
-          window.fixture.push('myView', { summary: '最近一次评分', data: { v: 1, resultId: m.input, score: window.fixture.score ?? 80, remaining: window.fixture.remaining ?? 2, passed: receipt.claimed } })
+          if (window.fixture.hongbao.params.multiReward) {
+            const previous = window.fixture.myView?.data
+            const record = [...window.fixture.uploadResults ?? [], ...window.fixture.galleryItems ?? [], window.fixture.galleryLatest].find(item => item?.id === m.input)
+            const score = record?.score ?? window.fixture.score ?? 80
+            const reward = Math.round(Number(receipt.added ?? '0') * 100)
+            const results = previous?.results ?? []
+            const data = m.input === '结算' ? { v: 2, multiReward: true, ...previous, results }
+              : { v: 2, multiReward: true, resultId: m.input, score, reward, remaining: record?.remaining ?? window.fixture.remaining ?? 2, passed: reward > 0,
+                results: [...results.filter(item => item.id !== m.input), { id: m.input, score, reward }] }
+            window.fixture.push('myView', { summary: '累计奖励', data })
+          } else window.fixture.push('myView', { summary: '最近一次评分', data: { v: 1, resultId: m.input, score: window.fixture.score ?? 80, remaining: window.fixture.remaining ?? 2, passed: receipt.claimed } })
         }
         reply(receipt)
         }
@@ -209,11 +223,11 @@ async function fixture(overrides = {}, width = 390, height = 900) {
       }
     })
   }, state)
-  await page.goto(`${station}/__participant_harness`, { waitUntil: 'networkidle' })
+  await page.goto(`${station}/__participant_harness`, { waitUntil: overrides.holdGallery ? 'load' : 'networkidle' })
   const frame = page.frameLocator('iframe')
   return { context, page, frame, uploads: () => uploadCount, galleryReads: () => galleryReads, resultReads: () => resultReads,
     imageReads: () => imageReads, likeBatches, likeTotals, releaseLike: () => releaseLike?.(),
-    replaceGallery: items => { actors.get(currentActor).items = items }, releaseUpload: () => releaseUpload?.(),
+    replaceGallery: items => { actors.get(currentActor).items = items }, releaseUpload: () => releaseUpload?.(), releaseGallery: () => releaseGallery?.(),
     switchActor: async (id, name = '小明') => {
       currentActor = id
       if (!actors.has(id)) actors.set(id, { latest: null, items: [], remaining: 3 })
@@ -221,7 +235,7 @@ async function fixture(overrides = {}, width = 390, height = 900) {
         window.fixture.userId = id
         window.fixture.mine = []
         window.fixture.push('myView', null)
-        window.fixture.push('me', { ...window.fixture.me, name, claim: null, settled: false, open: true, why: undefined })
+        window.fixture.push('me', { ...window.fixture.me, name, claim: null, settled: false, pending: null, open: true, why: undefined })
       }, { id, name })
     },
   }
@@ -654,6 +668,121 @@ try {
     await page.evaluate(() => { window.fixture.mine = [{ n: 1, at: '', input: '2b990cc9-45da-44e2-8ce5-45a7bd6257d3', claimed: false }]; window.fixture.push('myView', { summary: null, data: { v: 1, score: 30, remaining: 2, passed: false } }) })
     await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
     assert.equal(await page.evaluate(() => window.fixture.submits), 1)
+    await context.close()
+  }
+  {
+    console.log('Checking two independent image rewards remain pending, restore every accepted result and settle together')
+    const secondId = '2b990cc9-45da-44e2-8ce5-45a7bd6257d4'
+    const { context, page, frame, uploads } = await fixture({ hongbao: multiHongbao,
+      uploadResults: [{ id: resultId, score: 75, attempt: 1, remaining: 4 }, { id: secondId, score: 72, attempt: 2, remaining: 3 }],
+      receipts: [{ judged: true, claimed: false, added: '5.50', pending: '5.50', settled: false }, { judged: true, claimed: false, added: '2.80', pending: '8.30', settled: false }, { judged: true, claimed: true, amount: '8.30', unit: 'LDC', pending: '0.00', settled: true }],
+    }, 1440)
+    await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
+    await chooseImage(frame)
+    await frame.getByRole('button', { name: '上传并评分', exact: true }).click()
+    await resultViewer(frame).getByRole('button', { name: '提交这次结果', exact: true }).click()
+    await resultViewer(frame).getByText('本图已计奖', { exact: true }).waitFor()
+    assert.match(await resultViewer(frame).locator('.reward-preview').innerText(), /5\.50/)
+    assert.equal(await frame.getByRole('heading', { name: '奖励已领取', exact: true }).count(), 0)
+    await resultViewer(frame).getByRole('button', { name: '继续上传', exact: true }).click()
+    await frame.locator('.pending-reward').getByText('5.50', { exact: false }).waitFor()
+    await chooseImage(frame, { ...picture, name: 'second.png' })
+    await frame.getByRole('button', { name: '上传并评分', exact: true }).click()
+    await resultViewer(frame).getByRole('button', { name: '提交这次结果', exact: true }).click()
+    await resultViewer(frame).getByText('本图已计奖', { exact: true }).waitFor()
+    await closeViewer(frame)
+    await reloadChallenge(page)
+    await frame.locator('.pending-reward').getByText('8.30', { exact: false }).waitFor()
+    await frame.locator(`[data-gallery-id="${resultId}"] .gallery-photo`).click()
+    await resultViewer(frame).getByText('本图已计奖', { exact: true }).waitFor()
+    assert.match(await resultViewer(frame).locator('.reward-preview').innerText(), /5\.50/, 'Older image keeps its own actual reward after refresh')
+    assert.equal(await resultViewer(frame).getByRole('button', { name: '提交这次结果' }).count(), 0, 'All accepted IDs survive refresh, not just the latest')
+    await closeViewer(frame)
+    await frame.getByRole('button', { name: '结算并领取', exact: true }).click()
+    const dialog = frame.getByRole('dialog', { name: '结算并领取', exact: true })
+    await dialog.waitFor()
+    assert.match(await dialog.innerText(), /8\.30[\s\S]*未提交的评分/)
+    assert.equal(await page.evaluate(() => window.fixture.submits), 2, 'Opening confirmation does not send a settlement')
+    await dialog.getByRole('button', { name: '继续挑战', exact: true }).click()
+    await frame.getByRole('button', { name: '结算并领取', exact: true }).click()
+    await page.screenshot({ path: 'shots/participant-multi-settle-1440.png' })
+    await dialog.getByRole('button', { name: '确认结算', exact: true }).click()
+    await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+    assert.deepEqual(await page.evaluate(() => window.fixture.mine.map(item => item.input)), ['结算', secondId, resultId])
+    await reloadChallenge(page)
+    await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+    assert.equal(await frame.locator('#photo').count(), 0)
+    assert.equal(await frame.getByRole('button', { name: '结算并领取', exact: true }).count(), 0)
+    assert.equal(uploads(), 2)
+    await context.close()
+  }
+  {
+    console.log('Checking a final duplicate retains the settlement exit and a readable 320px confirmation')
+    const { context, page, frame, uploads } = await fixture({ hongbao: multiHongbao, me: { ...normalMe, pending: '5.50' },
+      uploadError: { body: { code: 'duplicate_image', error: '这张图片已提交过，本次已消耗 1 次机会，请换一张', remaining: 0, attempt: 5 } },
+      receipt: { judged: true, claimed: true, amount: '5.50', unit: 'LDC', pending: '0.00', settled: true },
+    }, 320, 640)
+    await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
+    await chooseImage(frame)
+    await frame.getByRole('button', { name: '上传并评分', exact: true }).click()
+    await frame.getByRole('heading', { name: '上传机会已用完' }).waitFor()
+    await frame.getByRole('button', { name: '结算并领取', exact: true }).click()
+    const dialog = frame.getByRole('dialog', { name: '结算并领取', exact: true })
+    await dialog.waitFor()
+    const geometry = await dialog.evaluate(panel => ({ left: panel.getBoundingClientRect().left, right: panel.getBoundingClientRect().right, viewport: window.innerWidth, width: panel.clientWidth, scrollWidth: panel.scrollWidth }))
+    assert.ok(geometry.left >= 0 && geometry.right <= geometry.viewport && geometry.scrollWidth <= geometry.width + 1)
+    await dialog.getByRole('button', { name: '确认结算', exact: true }).scrollIntoViewIfNeeded()
+    await page.screenshot({ path: 'shots/participant-multi-settle-320.png' })
+    await dialog.getByRole('button', { name: '确认结算', exact: true }).click()
+    await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+    assert.equal(uploads(), 1)
+    assert.deepEqual(await page.evaluate(() => window.fixture.mine.map(item => item.input)), ['结算'])
+    await context.close()
+  }
+  {
+    console.log('Checking uncertain settlement persists across refresh without an automatic money request')
+    const { context, page, frame } = await fixture({ hongbao: multiHongbao, me: { ...normalMe, pending: '5.50' }, receipt: { judged: false, reason: 'unconfirmed' } })
+    await frame.getByRole('button', { name: '结算并领取', exact: true }).click()
+    await frame.getByRole('dialog', { name: '结算并领取', exact: true }).getByRole('button', { name: '确认结算', exact: true }).click()
+    await frame.getByRole('heading', { name: '正在等待提交确认' }).waitFor()
+    await frame.getByRole('dialog', { name: '结算并领取', exact: true }).getByRole('button', { name: '关闭弹窗', exact: true }).click()
+    await reloadChallenge(page)
+    await frame.getByRole('heading', { name: '正在等待提交确认' }).waitFor()
+    assert.equal(await frame.getByRole('button', { name: '结算并领取', exact: true }).isDisabled(), true)
+    await frame.getByRole('button', { name: '重新核对', exact: true }).click()
+    assert.equal(await page.evaluate(() => window.fixture.submits), 1)
+    await page.evaluate(() => {
+      window.fixture.mine = [{ n: 1, at: '', input: '结算', claimed: true }]
+      window.fixture.push('me', { ...window.fixture.me, claim: { amount: '5.50', unit: 'LDC', payment: 'paid' }, settled: true, pending: '0.00', open: false, why: 'already_claimed' })
+    })
+    await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+    assert.equal(await page.evaluate(() => window.fixture.submits), 1)
+    await context.close()
+  }
+  {
+    console.log('Checking settlement remains independent of a stalled gallery Worker request')
+    const { context, page, frame, releaseGallery } = await fixture({ hongbao: multiHongbao, holdGallery: true,
+      me: { ...normalMe, pending: '5.50' }, receipt: { judged: true, claimed: true, amount: '5.50', unit: 'LDC', settled: true },
+    })
+    const button = frame.getByRole('button', { name: '结算并领取', exact: true })
+    await button.waitFor()
+    assert.equal(await button.isEnabled(), true, 'Trusted platform state is enough to settle; the gallery is still loading')
+    await button.click()
+    await frame.getByRole('dialog', { name: '结算并领取', exact: true }).getByRole('button', { name: '确认结算', exact: true }).click()
+    await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+    assert.deepEqual(await page.evaluate(() => window.fixture.mine.map(item => item.input)), ['结算'])
+    releaseGallery()
+    await context.close()
+  }
+  {
+    console.log('Checking a same-name numeric account switch clears settlement and private pending balance')
+    const { context, frame, switchActor } = await fixture({ hongbao: multiHongbao, me: { ...normalMe, pending: '5.50' } })
+    await frame.getByRole('button', { name: '结算并领取', exact: true }).click()
+    await frame.getByRole('dialog', { name: '结算并领取', exact: true }).waitFor()
+    await switchActor('456')
+    await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
+    assert.equal(await frame.getByRole('dialog').count(), 0)
+    assert.doesNotMatch(await frame.locator('.pending-reward').innerText(), /5\.50/)
     await context.close()
   }
   {

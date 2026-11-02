@@ -35,7 +35,7 @@ export function sqliteD1(): { db: D1Database; sqlite: DatabaseSync } {
 
 export const identity = { hongbao: '12345678-1234-4234-8234-123456789012', sender: '10000', sub: '42', nonce: 'valid-nonce-example' } satisfies Identity
 export const environment = { OWNER_ID: '10000', HB_SITE: 'https://hb.example.com' } satisfies Pick<AppEnv, 'OWNER_ID' | 'HB_SITE'>
-export const params = { server: 'https://challenge.example.com/', challenge: '这是一只猫吗？', minScore: 70, maxScore: 100, maxAttempts: 3, saveImages: true, reward: 100, scoreReward: false, minReward: 1 }
+export const params = { server: 'https://challenge.example.com/', challenge: '这是一只猫吗？', minScore: 70, maxScore: 100, maxAttempts: 3, saveImages: true, reward: 100, scoreReward: false, minReward: 1, multiReward: false }
 export const activity = {
   activity: {
     id: identity.hongbao, status: 'active', author: { id: '11111111-2222-4333-8444-555555555555' },

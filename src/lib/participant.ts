@@ -1,5 +1,31 @@
 import type { HbHongbao, HbMe, HbMyJudgment, HbMyView } from '../types/hb-sdk'
 
+export const SETTLE_INPUT = '结算' as const
+const RESULT_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
+
+export interface AcceptedResult { id: string; score: number; reward: number }
+
+export function acceptedResults(view: HbMyView | null | undefined): AcceptedResult[] {
+  const data = view?.data
+  if (!data || typeof data !== 'object' || !('v' in data) || data.v !== 2 ||
+    !('multiReward' in data) || data.multiReward !== true || !('results' in data) ||
+    !Array.isArray(data.results) || data.results.length > 10) return []
+  const results: AcceptedResult[] = []
+  for (const item of data.results) {
+    if (!item || typeof item !== 'object' || typeof item.id !== 'string' || !RESULT_ID.test(item.id) ||
+      typeof item.score !== 'number' || !Number.isFinite(item.score) || item.score < 0 || item.score > 100 ||
+      !Number.isSafeInteger(item.reward) || item.reward < 0 || results.some(result => result.id === item.id)) return []
+    results.push({ id: item.id, score: item.score, reward: item.reward })
+  }
+  return results
+}
+
+export function submittedResult(view: HbMyView | null | undefined, id: string): boolean {
+  const data = view?.data
+  if (data && typeof data === 'object' && 'v' in data && data.v === 1 && 'resultId' in data) return data.resultId === id
+  return acceptedResults(view).some(result => result.id === id)
+}
+
 export interface ChallengeProgress {
   score: number
   remaining: number
@@ -16,7 +42,7 @@ export interface ParticipationState {
 
 export function challengeProgress(view: HbMyView | null | undefined, maxAttempts: number): ChallengeProgress | null {
   const data = view?.data
-  if (!data || typeof data !== 'object' || !('v' in data) || data.v !== 1 ||
+  if (!data || typeof data !== 'object' || !('v' in data) || !(data.v === 1 || (data.v === 2 && 'multiReward' in data && data.multiReward === true)) ||
     !('score' in data) || typeof data.score !== 'number' || !Number.isFinite(data.score) || data.score < 0 || data.score > 100 ||
     !('remaining' in data) || typeof data.remaining !== 'number' || !Number.isInteger(data.remaining) || data.remaining < 0 || data.remaining > maxAttempts ||
     !('passed' in data) || typeof data.passed !== 'boolean') return null
@@ -74,7 +100,7 @@ export function readPendingSubmission(storage: Pick<Storage, 'getItem'>, hongbao
   try {
     const value: unknown = JSON.parse(storage.getItem(pendingKey(hongbaoId, userId)) ?? storage.getItem(pendingKey(hongbaoId)) ?? 'null')
     if (value && typeof value === 'object' && 'resultId' in value && typeof value.resultId === 'string' &&
-      /^[a-f0-9-]{36}$/i.test(value.resultId) && 'name' in value && typeof value.name === 'string') {
+      (RESULT_ID.test(value.resultId) || value.resultId === SETTLE_INPUT) && 'name' in value && typeof value.name === 'string') {
       const storedUser = 'userId' in value && typeof value.userId === 'string' && /^\d+$/.test(value.userId) ? value.userId : undefined
       if (userId && storedUser && userId !== storedUser) return null
       return { resultId: value.resultId, name: value.name, ...(storedUser ? { userId: storedUser } : {}) }

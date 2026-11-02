@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { handleApiRequest } from '../../src/server/api'
 import * as auth from '../../src/server/auth'
 import type { AppEnv } from '../../src/server/env'
 import { createNonce } from '../../src/server/store'
-import { activity, environment, identity, png, sqliteD1 } from './helpers'
+import { activity, environment, identity, params, png, sqliteD1 } from './helpers'
+
+const verifySignedIdentity = auth.verifyIdentity
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
@@ -120,5 +123,113 @@ describe('upload workflow', () => {
     expect(cross!.status).toBe(403)
     expect(await handleApiRequest(new Request('https://challenge.example.com/'), env)).toBeNull()
     sqlite.close()
+  })
+})
+
+function judgeFixture() {
+  const { db, sqlite } = sqliteD1()
+  let currentIdentity = { ...identity }
+  vi.spyOn(auth, 'verifyIdentity').mockImplementation(async () => currentIdentity)
+  const env = { ...environment, DB: db } as AppEnv
+  function seed(options: { user?: string; hongbao?: string; attempt?: number; status?: 'ready' | 'processing' | 'failed'; error?: string; config?: Record<string, unknown> } = {}) {
+    const id = crypto.randomUUID(), status = options.status ?? 'ready'
+    sqlite.prepare(`INSERT INTO image_attempts
+      (id,hongbao,user_id,idempotency_key,image_sha256,attempt_no,config_json,status,content_type,score,error_code,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+      id, options.hongbao ?? identity.hongbao, options.user ?? identity.sub,
+      crypto.randomUUID(), crypto.randomUUID(), options.attempt ?? 1,
+      JSON.stringify(options.config ?? { ...params, multiReward: true, maxAttempts: 7 }),
+      status, 'image/png', status === 'ready' ? 85 : null, options.error ?? null, 1, 1,
+    )
+    return id
+  }
+  async function request(id: string, user = identity.sub, headers: Record<string, string> = { 'X-Hb-Token': 'judge-token' }) {
+    return (await handleApiRequest(new Request(`https://challenge.example.com/api/results/${id}?user=${user}`, { headers }), env))!
+  }
+  return { db, sqlite, env, seed, request, scope: (hongbao: string) => { currentIdentity = { ...identity, hongbao } } }
+}
+
+describe('multiple-reward judge progress', () => {
+  it('counts all scoped reservations while exposing only ready result IDs, including older unsubmitted images', async () => {
+    const f = judgeFixture()
+    const first = f.seed({ attempt: 1 })
+    const current = f.seed({ attempt: 2 })
+    f.seed({ attempt: 3, status: 'failed', error: 'ai_failed' })
+    f.seed({ attempt: 4, status: 'failed', error: 'duplicate_image' })
+    f.seed({ attempt: 5, status: 'processing' })
+    f.seed({ user: '99', attempt: 10 })
+    f.seed({ hongbao: 'other-packet', attempt: 10 })
+    const response = await f.request(current)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      found: true, multiReward: true, attempt: 2,
+      progress: { remaining: 2, readyIds: [first, current], processing: true },
+    })
+    expect(await (await f.request(current, '99')).json()).toEqual({ found: false })
+    f.scope('other-packet')
+    expect(await (await f.request(current)).json()).toEqual({ found: false })
+    f.sqlite.close()
+  })
+
+  it('keeps exhausted progress accurate when the final reservations failed or were duplicates', async () => {
+    const f = judgeFixture()
+    const ready = f.seed({ attempt: 1, config: { ...params, multiReward: true } })
+    f.seed({ attempt: 2, status: 'failed', error: 'ai_failed' })
+    f.seed({ attempt: 3, status: 'failed', error: 'duplicate_image' })
+    expect(await (await f.request(ready)).json()).toMatchObject({
+      progress: { remaining: 0, readyIds: [ready], processing: false },
+    })
+    // Player reads retain the existing public contract, with no other ready IDs.
+    const own = await handleApiRequest(new Request(`https://challenge.example.com/api/uploads/${ready}`, {
+      headers: { Authorization: 'Bearer page-token' },
+    }), f.env)
+    const playerData = await own!.json()
+    expect(playerData).toMatchObject({ id: ready, remaining: 0 })
+    expect(playerData).not.toHaveProperty('progress')
+    f.sqlite.close()
+  })
+
+  it('bounds ready IDs to the ten permitted attempts without dropping the requested result', async () => {
+    const f = judgeFixture()
+    const ids = Array.from({ length: 10 }, (_, index) => f.seed({ attempt: index + 1, config: { ...params, multiReward: true, maxAttempts: 10 } }))
+    expect(await (await f.request(ids[9])).json()).toMatchObject({
+      progress: { remaining: 0, readyIds: ids, processing: false },
+    })
+    f.sqlite.close()
+  })
+
+  it('defaults old frozen configurations to one reward and omits progress for single-reward records', async () => {
+    const f = judgeFixture()
+    const legacy: Record<string, unknown> = { ...params }
+    delete legacy.multiReward
+    const old = f.seed({ config: legacy })
+    const single = f.seed({ attempt: 2, config: { ...params, multiReward: false } })
+    for (const id of [old, single]) {
+      const data = await (await f.request(id)).json()
+      expect(data).toMatchObject({ found: true, multiReward: false, model: '@cf/cloudflare/clef-omni' })
+      expect(data).not.toHaveProperty('progress')
+    }
+    f.sqlite.close()
+  })
+
+  it('requires a judge identity even when a valid signed page token is supplied', async () => {
+    const f = judgeFixture()
+    const pair = await generateKeyPair('ES256')
+    const keys = createLocalJWKSet({ keys: [{ ...await exportJWK(pair.publicKey), kid: 'api-test', alg: 'ES256' }] })
+    vi.mocked(auth.verifyIdentity).mockImplementation((token, kind, request, env) => verifySignedIdentity(token, kind, request, env, keys))
+    const token = (issuer: string) => new SignJWT(identity).setProtectedHeader({ alg: 'ES256', kid: 'api-test' })
+      .setIssuer(issuer).setAudience('https://challenge.example.com').setIssuedAt().setExpirationTime('10m').sign(pair.privateKey)
+    const pageToken = await token(environment.HB_SITE)
+    const id = f.seed()
+    const wrongKind = await f.request(id, identity.sub, { 'X-Hb-Token': pageToken })
+    expect(wrongKind.status).toBe(401)
+    expect(await wrongKind.json()).toMatchObject({ code: 'invalid_identity' })
+    const wrongHeader = await f.request(id, identity.sub, { Authorization: `Bearer ${pageToken}` })
+    expect(wrongHeader.status).toBe(401)
+    expect(await wrongHeader.json()).toMatchObject({ code: 'identity_required' })
+    const permitted = await f.request(id, identity.sub, { 'X-Hb-Token': await token(`${environment.HB_SITE}/judge`) })
+    expect(permitted.status).toBe(200)
+    expect(await permitted.json()).toMatchObject({ found: true, progress: { readyIds: [id] } })
+    f.sqlite.close()
   })
 })

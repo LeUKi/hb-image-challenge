@@ -15,7 +15,7 @@ function json(value: unknown, status = 200): Response { return Response.json(val
 
 function attemptConfig(attempt: Attempt): ChallengeConfig & { model: string } {
   const config = JSON.parse(attempt.config_json) as ChallengeConfig & { model?: string }
-  return { ...config, model: config.model ?? LEGACY_MODEL }
+  return { ...config, multiReward: config.multiReward ?? false, model: config.model ?? LEGACY_MODEL }
 }
 
 function uploadResult(attempt: Attempt, remaining?: number): UploadResult {
@@ -102,9 +102,17 @@ async function judgeResult(request: Request, env: AppEnv, id: string): Promise<R
   if (!result || result.score === null) return json({ found: false })
   const config = attemptConfig(result)
   const passed = result.score >= config.minScore && result.score <= config.maxScore
+  const attempts = config.multiReward ? await env.DB.prepare('SELECT id, attempt_no, status FROM image_attempts WHERE hongbao = ? AND user_id = ? ORDER BY attempt_no LIMIT ?')
+    .bind(identity.hongbao, user, MAX_ATTEMPTS).all<Pick<Attempt, 'id' | 'attempt_no' | 'status'>>() : null
+  const progress = attempts ? {
+    remaining: Math.max(0, config.maxAttempts - Math.max(0, ...attempts.results.map(attempt => attempt.attempt_no))),
+    readyIds: attempts.results.filter(attempt => attempt.status === 'ready').map(attempt => attempt.id),
+    processing: attempts.results.some(attempt => attempt.status === 'processing'),
+  } : null
   return json({
     found: true, id: result.id, hongbao: result.hongbao, user: result.user_id,
     ...config, score: result.score, attempt: result.attempt_no, saved: result.image_key !== null,
+    ...(progress ? { progress } : {}),
     ...(passed ? { galleryGrant: await galleryGrant(env.DB, identity.hongbao, user) } : {}),
   })
 }

@@ -15,6 +15,7 @@ export function parseChallenge(params: Record<string, unknown>, origin: string):
   const reward = params.reward === undefined ? 100 : params.reward
   const scoreReward = params.scoreReward === undefined ? false : params.scoreReward
   const minReward = params.minReward === undefined ? 1 : params.minReward
+  const multiReward = params.multiReward === undefined ? false : params.multiReward
   if (typeof challenge !== 'string' || !challenge.trim() || challenge.length > 1000 ||
       typeof minScore !== 'number' || !Number.isFinite(minScore) || minScore < 0 ||
       typeof maxScore !== 'number' || !Number.isFinite(maxScore) || maxScore > 100 || minScore > maxScore ||
@@ -22,11 +23,12 @@ export function parseChallenge(params: Record<string, unknown>, origin: string):
       typeof saveImages !== 'boolean' ||
       typeof reward !== 'number' || !Number.isSafeInteger(reward) || reward < 1 ||
       typeof scoreReward !== 'boolean' ||
+      typeof multiReward !== 'boolean' ||
       typeof minReward !== 'number' || !Number.isSafeInteger(minReward) || minReward < 1 ||
       (scoreReward && minReward > reward)) {
     throw new ApiFailure(422, 'invalid_challenge', '红包的挑战配置无效，请联系红包作者')
   }
-  return { challenge, minScore, maxScore, maxAttempts, saveImages, reward, scoreReward, minReward }
+  return { challenge, minScore, maxScore, maxAttempts, saveImages, reward, scoreReward, minReward, multiReward }
 }
 
 export interface ChallengeContext { config: ChallengeConfig; ended: boolean; active: boolean }

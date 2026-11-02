@@ -54,4 +54,11 @@ describe('trusted platform requests', () => {
       expect(() => parseChallenge({ ...params, ...change }, origin)).toThrow()
     }
   })
+  it('keeps old activities single-reward and freezes an explicit multi-reward switch', () => {
+    const legacy: Record<string, unknown> = { ...params }
+    delete legacy.multiReward
+    expect(parseChallenge(legacy, origin).multiReward).toBe(false)
+    expect(parseChallenge({ ...params, multiReward: true }, origin).multiReward).toBe(true)
+    for (const value of ['true', 1, null]) expect(() => parseChallenge({ ...params, multiReward: value }, origin)).toThrow()
+  })
 })

@@ -218,12 +218,11 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
 .processing-state h2 { font-weight: 500; }
 .processing-state p { color: var(--color-muted); margin-top: 6px; }
 .score-result { padding-top: 18px; margin-top: 18px; border-top: 1px solid var(--color-line); }
-.score-result-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.result-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .score-result h2 { font-weight: 400; color: var(--color-muted); }
-.score-result .result-score { margin-top: 5px; font-size: 40px; font-family: var(--font-display); }
+.score-result .result-score { margin-top: 4px; font-size: 28px; font-family: var(--font-mono); }
 .result-score > span { margin-left: 3px; font-size: 22px; }
 .result-score[data-matched=false] { color: var(--color-ink); }
-.result-status { font-size: 16px; color: var(--color-accent); }
 .reward-preview { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px; padding: 12px 0 0; color: var(--color-muted); }
 .reward-preview strong { font-size: 21px; color: var(--color-ink); font-variant-numeric: tabular-nums; font-weight: 600; }
 .reward-preview strong span { font-size: 16px; font-weight: 400; }
@@ -246,7 +245,7 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
 .gallery-like[data-pending=true] { color: #ffbdce; }
 .gallery-like:hover:enabled { background: #25434af2; }
 .gallery-like:disabled, .detail-like:disabled { opacity: .55; }
-.detail-like { margin-bottom: 12px; padding: 10px 14px; background: #eff6f2; color: var(--color-accent); }
+.detail-like { padding: 10px 14px; background: #eff6f2; color: var(--color-accent); }
 .gallery-like:focus-visible, .detail-like:focus-visible { outline: 3px solid #87d4c4; outline-offset: -3px; }
 .gallery-photo, .detail-photo { position: relative; display: block; width: 100%; padding: 0; overflow: hidden; background: #e7eeeb; color: white; }
 .private-image { display: block; width: 100%; height: 100%; }
@@ -289,11 +288,21 @@ html::-webkit-scrollbar, .modal-overlay::-webkit-scrollbar { width: 0; height: 0
 .help-steps p { margin-top: 5px; color: var(--color-muted); }
 .prompt-quote { padding: 5px 0 5px 13px; border-left: 2px solid var(--color-line); color: var(--color-muted); overflow-wrap: anywhere; }
 .selected-image-detail { display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 10px; background: #f1f5f3; }
-.detail-photo { max-height: 65vh; border-radius: 10px; }
+.detail-photo { max-height: min(48vh, 460px); border-radius: 10px; }
 .detail-photo:disabled { cursor: default; }
 .detail-photo .private-image img { object-fit: contain; }
-.image-detail-score { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 0 8px; }
-.image-detail-score strong { font-family: var(--font-mono); font-size: 28px; font-weight: 600; }
+.image-detail-scores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.image-detail-score { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.image-detail-score > span { color: var(--color-muted); }
+.image-detail-score strong { font-family: var(--font-mono); font-size: 30px; font-weight: 600; }
+.image-detail-nsfw strong { font-size: 24px; line-height: 1.9; }
+.image-detail-context, .image-detail-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; color: var(--color-muted); }
+.image-detail-context { margin-top: 10px; }
+.image-detail-meta { margin-top: 14px; }
+.image-detail-meta > p { flex: 1 1 200px; }
+.image-detail-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--color-line); }
+.image-detail-actions .reward-preview { padding-top: 0; }
+.viewer-participation { font-size: 20px; font-weight: 500; color: var(--color-accent); }
 @media (max-width: 899px) {
   .challenge-layout { grid-template-columns: minmax(0, 1fr); gap: 28px; }
   .challenge-workspace { position: static; }

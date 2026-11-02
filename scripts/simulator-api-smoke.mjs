@@ -5,8 +5,9 @@ import { randomUUID } from 'node:crypto'
 import { demoImage } from './demo-images.mjs'
 
 // Run against a freshly started `npm run simulator`. This consumes two of
-// 小明's local attempts and settles one simulated reward. It never resets or
-// ends the activity; restarting the simulator restores its seeded state.
+// 小明's local attempts plus 小刚's final attempt for a cross-player duplicate,
+// and settles one simulated reward. It never resets or ends the activity;
+// restarting the simulator restores its seeded state.
 const station = process.env.SIMULATOR_URL || 'http://127.0.0.1:8860'
 const service = process.env.SERVICE_URL || 'http://127.0.0.1:5173'
 for (const address of [station, service]) {
@@ -153,9 +154,36 @@ assert.equal(afterFailure.myView.data.resultId, first.result.id, 'The private ac
 assert.equal('galleryGrant' in afterFailure.myView.data, false)
 console.log('PASS 35% 未提交评分可刷新恢复，失败提交不发奖、不结算、不授予图库许可；剩余 4 次。')
 
+const duplicatePlayer = await identify('小刚')
+const beforeDuplicate = await gallery(duplicatePlayer)
+assert.equal(beforeDuplicate.remaining, 1)
+assert.notEqual(beforeDuplicate.latest.id, first.result.id, 'The duplicate requester must not own the original result')
+const duplicateKey = randomUUID()
+const duplicateOptions = {
+  method: 'POST', headers: {
+    ...headers(duplicatePlayer), 'Content-Type': 'image/png', 'X-Hb-Nonce': duplicatePlayer.nonce,
+    'Idempotency-Key': duplicateKey, 'X-Hb-Gallery-Consent': 'v1',
+  }, body: demoImage(8),
+}
+const duplicateResponse = await response(`${service}/api/upload`, duplicateOptions)
+assert.equal(duplicateResponse.status, 409)
+const duplicate = await duplicateResponse.json()
+assert.deepEqual(duplicate, { code: 'duplicate_image', error: '这张图片已提交过，本次已消耗 1 次机会，请换一张', attempt: 5, remaining: 0 })
+assert.equal('id' in duplicate || 'score' in duplicate || 'user' in duplicate, false, 'A duplicate error must not reveal another participant or their result')
+const afterDuplicate = await gallery(await identify('小刚'))
+assert.equal(afterDuplicate.remaining, 0, 'Reusing any participant’s exact file consumes the requester’s attempt')
+assert.equal(afterDuplicate.latest.id, beforeDuplicate.latest.id, 'A duplicate never replaces the requester’s own recoverable score')
+assert.deepEqual(afterDuplicate.items.map(item => item.id).sort(), beforeDuplicate.items.map(item => item.id).sort(), 'A rejected duplicate adds no gallery record')
+const duplicateReplay = await response(`${service}/api/upload`, duplicateOptions)
+assert.equal(duplicateReplay.status, 409)
+assert.deepEqual(await duplicateReplay.json(), duplicate, 'Replaying the same upload operation returns its existing failure without charging another attempt')
+assert.equal((await gallery(await identify('小明'))).remaining, 4, 'Another participant’s duplicate does not charge the original uploader')
+console.log('PASS 整个红包精确去重：小刚重复小明图片消耗最后1次，不泄露原结果、不新增作品；同幂等键重试不重复扣次。')
+
 const second = await upload('小明', 9)
 player = second.player
 assert.deepEqual({ score: second.result.score, attempt: second.result.attempt, remaining: second.result.remaining }, { score: 75, attempt: 2, remaining: 3 })
+assert.equal(second.result.score, 75, 'The rejected duplicate must not have consumed the simulator’s next AI inference')
 const stillUnclaimed = await gallery(player)
 assert.equal(stillUnclaimed.visibility, 'misses')
 assert.equal(stillUnclaimed.items.length, 8, 'Own successful but unsubmitted result is visible without revealing others’ successes')
@@ -212,4 +240,4 @@ const mine = await json(`${station}/api/mine?who=${encodeURIComponent('小明')}
 assert.equal(mine.total, 2)
 assert.deepEqual(mine.items.map(item => item.claimed), [true, false])
 console.log('PASS 未领取的小红无法借用许可读取图库或成功原图；私人提交记录保留一次失败、一次成功。')
-console.log('官方模拟器 + 真实产品 API 全流程通过。未调用真实 AI、未产生真实资金；本轮消耗小明 2 次模拟上传，请重启模拟器恢复体验初态。')
+console.log('官方模拟器 + 真实产品 API 全流程通过。未调用真实 AI、未产生真实资金；本轮消耗小明 2 次模拟上传及小刚 1 次重复上传，请重启模拟器恢复体验初态。')

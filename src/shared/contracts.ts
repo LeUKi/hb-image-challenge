@@ -96,4 +96,6 @@ export interface GalleryResponse {
 export interface ApiError {
   error: string
   code?: string
+  attempt?: number
+  remaining?: number
 }

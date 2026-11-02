@@ -32,6 +32,14 @@ async function remainingAttempts(db: D1Database, identity: Pick<Identity, 'hongb
 
 async function replay(attempt: Attempt, hash: string, db: D1Database): Promise<Response> {
   if (attempt.image_sha256 !== hash) throw new ApiFailure(409, 'idempotency_conflict', '同一个上传编号不能用于不同的图片')
+  if (attempt.status === 'failed' && attempt.error_code === 'duplicate_image') {
+    const config = JSON.parse(attempt.config_json) as ChallengeConfig
+    return json({
+      error: '这张图片已提交过，本次已消耗 1 次机会，请换一张', code: 'duplicate_image',
+      attempt: attempt.attempt_no,
+      remaining: await remainingAttempts(db, { hongbao: attempt.hongbao, sub: attempt.user_id }, config.maxAttempts),
+    }, 409)
+  }
   if (attempt.status === 'processing') throw new ApiFailure(409, 'processing', '这张图片仍在处理，请稍后查询已有结果，不要重新上传')
   if (attempt.status === 'failed') throw new ApiFailure(502, attempt.error_code ?? 'processing_failed', '本次处理未完成，已记录这次尝试，请勿重复提交同一上传')
   const config = JSON.parse(attempt.config_json) as ChallengeConfig
@@ -57,6 +65,7 @@ async function upload(request: Request, env: AppEnv): Promise<Response> {
   })
   if (!reserved.created) return replay(reserved.attempt, hash, env.DB)
   const attempt = reserved.attempt
+  if (attempt.status !== 'processing') return replay(attempt, hash, env.DB)
   const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[info.contentType]
   const imageKey = config.saveImages ? `images/${identity.hongbao}/${identity.sub}/${attempt.id}.${extension}` : null
   // Neither operation depends on the other. Await both before declaring a result ready.
@@ -100,6 +109,7 @@ async function playerResult(request: Request, env: AppEnv, id: string): Promise<
   const result = await env.DB.prepare('SELECT * FROM image_attempts WHERE id = ? AND hongbao = ? AND user_id = ?')
     .bind(id, identity.hongbao, identity.sub).first<Attempt>()
   if (!result) throw new ApiFailure(404, 'result_not_found', '没有找到这次上传')
+  if (result.error_code === 'duplicate_image') return replay(result, result.image_sha256, env.DB)
   if (result.status !== 'ready') return json({ id: result.id, status: result.status, code: result.error_code })
   return replay(result, result.image_sha256, env.DB)
 }

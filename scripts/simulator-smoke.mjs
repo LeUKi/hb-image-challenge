@@ -60,8 +60,23 @@ async function readable(frame, label) {
 
 async function upload(frame, index) {
   await frame.locator('#photo').setInputFiles({ name: `demo-${index}.png`, mimeType: 'image/png', buffer: demoImage(index) })
+  const response = frame.page().waitForResponse(response => new URL(response.url()).pathname === '/api/upload' && response.request().method() === 'POST')
   await frame.getByRole('button', { name: '上传并评分', exact: true }).click()
-  await frame.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
+  const uploaded = await response
+  assert.equal(uploaded.status(), 200)
+  const result = await uploaded.json()
+  const viewer = frame.getByRole('dialog', { name: '图片详情', exact: true })
+  await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
+  assert.equal(await frame.getByRole('dialog').count(), 1, 'A completed upload opens only the shared image viewer')
+  assert.equal(await frame.locator('.upload-preview, .file-meta').count(), 0)
+  assert.deepEqual(await frame.locator('#photo').evaluate(input => ({ value: input.value, files: input.files.length })), { value: '', files: 0 })
+  assert.equal(await frame.getByRole('button', { name: '上传并评分', exact: true }).isDisabled(), true)
+  await viewer.locator('.detail-photo img').waitFor()
+  assert.match(await viewer.innerText(), /匹配评分[\s\S]*NSFW 评分[\s\S]*2\.0%/)
+  assert.match(await viewer.innerText(), /70–80%/)
+  assert.match(await viewer.innerText(), /Clef Omni/)
+  assert.match(await viewer.innerText(), /480\s*×\s*(600|400)\s*px/)
+  return result
 }
 
 try {
@@ -125,13 +140,26 @@ try {
   await frame.getByRole('dialog').waitFor({ state: 'hidden' })
   console.log('PASS 匿名卡片、首次引导、16px文字、NSFW默认/单图/全局记忆、弹窗Esc/空白/关闭按钮。')
 
-  await upload(frame, 8)
+  const first = await upload(frame, 8)
   await frame.locator('.result-score').filter({ hasText: '35.0' }).waitFor()
   await waitCount(frame, 7)
+  await readable(frame, 'current result viewer')
+  await page.locator('iframe').first().screenshot({ path: 'shots/simulator-current-result.png' })
+  await frame.getByRole('dialog', { name: '图片详情', exact: true }).getByRole('button', { name: '关闭弹窗', exact: true }).click()
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' })
+  assert.equal(await frame.getByRole('button', { name: '提交这次结果', exact: true }).count(), 0, 'The page summary has no duplicate submit action')
+  await frame.getByRole('button', { name: '查看本次结果', exact: true }).click()
+  await frame.getByRole('dialog', { name: '图片详情', exact: true }).getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
   await frame.goto(pageOrigin, { waitUntil: 'domcontentloaded' })
   await frame.locator('.result-score').filter({ hasText: '35.0' }).waitFor()
+  assert.equal(await frame.getByRole('dialog').count(), 0, 'Refreshing recovers the scored result without opening a modal')
+  await frame.locator(`[data-gallery-id="${first.id}"] .gallery-photo`).click()
+  await frame.getByRole('dialog', { name: '图片详情', exact: true }).waitFor()
+  assert.equal(await frame.getByRole('dialog').count(), 1)
+  assert.match(await frame.getByRole('dialog').innerText(), /35\.0%/)
   await frame.getByRole('button', { name: '提交这次结果', exact: true }).click()
   await frame.getByRole('button', { name: '换张图片再试', exact: true }).click()
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' })
   await upload(frame, 9)
   await frame.locator('.result-score').filter({ hasText: '75.0' }).waitFor()
   await frame.locator('.reward-preview').filter({ hasText: '5.50' }).waitFor()
@@ -139,6 +167,8 @@ try {
   await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
   await waitCount(frame, 10)
   assert.equal(await frame.locator('#photo').count(), 0)
+  await frame.getByRole('dialog', { name: '图片详情', exact: true }).getByRole('button', { name: '关闭弹窗', exact: true }).click()
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' })
   await frame.goto(pageOrigin, { waitUntil: 'domcontentloaded' })
   await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
   await waitCount(frame, 10)
@@ -146,7 +176,7 @@ try {
   const scoreColors = await frame.locator('.gallery-score').evaluateAll(nodes => nodes.map(node => ({ passed: node.dataset.passed === 'true', color: window.getComputedStyle(node).color })))
   assert.ok(scoreColors.filter(item => item.passed).every(item => item.color === 'rgb(143, 231, 180)'))
   assert.ok(scoreColors.filter(item => !item.passed).every(item => item.color === 'rgb(255, 255, 255)'))
-  console.log('PASS 真实浏览器上传→未提交刷新恢复→35%失败→75%预计/实际5.50LDC→全部画廊→领取后刷新禁上传，绿/白分数字体。')
+  console.log('PASS 真实上传后清空选择框并自动打开统一查看器，模型字段/尺寸/奖励齐全；关闭摘要重开、刷新不弹窗、画廊重开提交→35%失败→75%预计/实际5.50LDC→领取后刷新禁上传。')
 
   // Leave the reader partway through the gallery, then cause another player’s
   // judgment. The real station emits its SDK update; no manual refresh click.

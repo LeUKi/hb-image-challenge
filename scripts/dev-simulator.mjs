@@ -43,6 +43,27 @@ let closing = false
 let calls = 0
 let nextScores = []
 
+function migrationStatements(sql) {
+  const statements = []
+  const lines = []
+  let trigger = false
+  // Each migration statement ends on its own line. A trigger's internal
+  // semicolons belong to that statement and must reach SQLite together.
+  for (const line of sql.replace(/--[^\n]*/g, '').split('\n')) {
+    const text = line.trim()
+    if (!text) continue
+    if (!lines.length) trigger = /^CREATE\s+TRIGGER\b/i.test(text)
+    lines.push(text)
+    if (trigger ? /^END\s*;$/i.test(text) : text.endsWith(';')) {
+      statements.push(lines.join(' '))
+      lines.length = 0
+      trigger = false
+    }
+  }
+  if (lines.length) throw new Error('本地迁移存在未闭合的 SQL 语句')
+  return statements
+}
+
 async function close() {
   if (closing) return
   closing = true
@@ -59,8 +80,8 @@ try {
   proxy = await getPlatformProxy({ configPath, persist: false, remoteBindings: false, envFiles: [] })
   for (const file of (await readdir(resolve(root, 'migrations'))).filter(name => name.endsWith('.sql')).sort()) {
     const sql = await readFile(resolve(root, 'migrations', file), 'utf8')
-    // D1 exec expects one statement per line. Migrations contain no string semicolons.
-    await proxy.env.DB.exec(sql.replace(/--[^\n]*/g, '').split(';').map(statement => statement.replace(/\s+/g, ' ').trim()).filter(Boolean).join(';\n') + ';')
+    // D1 exec expects one complete statement per line, including each trigger.
+    await proxy.env.DB.exec(migrationStatements(sql).join('\n'))
   }
   const env = { ...proxy.env, AI: { run: async () => {
     const [score, nsfw] = nextScores.shift() ?? [[35, 75, 91, 72, 57][calls++ % 5], 2]

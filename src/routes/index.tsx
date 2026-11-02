@@ -8,7 +8,7 @@ import { ArrowRight, Check, CheckCircle2, CircleHelp, EyeOff, ImagePlus, LoaderC
 import { Layout } from '../components/layout'
 import { Modal } from '../components/modal'
 import { Gallery } from '../components/gallery'
-import { apiJson, connectHongbao } from '../lib/hongbao'
+import { ApiRequestError, apiJson, connectHongbao } from '../lib/hongbao'
 import { displayedChallenge, expectedReward, formatReward } from '../lib/challenge'
 import { galleryGrant, galleryHeaders, PageIdentityCache } from '../lib/identity'
 import { NSFW_PREFERENCE_KEY } from '../lib/gallery'
@@ -18,7 +18,7 @@ import { canChooseImage, canSubmitScore, challengeProgress, confirmedSubmission,
 import type { PendingSubmission } from '../lib/participant'
 import { instructionsAtom, noticeAtom, phaseAtom, resultAtom, sessionAtom } from '../lib/state'
 import { MAX_IMAGE_BYTES } from '../shared/contracts'
-import type { PublicConfig, UploadResult } from '../shared/contracts'
+import type { GalleryItem, PublicConfig, UploadResult } from '../shared/contracts'
 
 export const Route = createFileRoute('/')({ component: ChallengePage })
 
@@ -29,10 +29,11 @@ function ChallengePage() {
   const [phase, setPhase] = useAtom(phaseAtom)
   const [instructions, setInstructions] = useAtom(instructionsAtom)
   const [preview, setPreview] = useState<string | null>(null)
+  const [resultImage, setResultImage] = useState<{ id: string; url: string } | null>(null)
   const [dragging, setDragging] = useState(false)
   const [fileMeta, setFileMeta] = useState<{ name: string; size: number } | null>(null)
   const [remaining, setRemaining] = useState<number | null>(null)
-  const [modal, setModal] = useState<'settings' | 'help' | 'preview' | null>(null)
+  const [modal, setModal] = useState<'settings' | 'help' | 'preview' | 'result' | GalleryItem | null>(null)
   const [showNsfw, setShowNsfw] = useState(false)
   const [verifiedIdentity, setVerifiedIdentity] = useState<{ key: string; version: number; userId: string } | null>(null)
   const [scopeGuard] = useState(() => new ParticipantScope())
@@ -47,7 +48,7 @@ function ChallengePage() {
   const suppressRestore = useRef(false)
   const pendingSubmissionRef = useRef<PendingSubmission | null>(null)
   const [pendingSubmission, setPendingSubmission] = useState<PendingSubmission | null>(null)
-  const [submittedResult, setSubmittedResult] = useState<string | null>(null)
+  const [submittedResults, setSubmittedResults] = useState(() => new Set<string>())
   const config = useQuery({ queryKey: ['service-config'], queryFn: () => apiJson<PublicConfig>('/api/config'), enabled: typeof window !== 'undefined' })
   const challenge = displayedChallenge(session.hongbao)
   const connected = session.status === 'connected'
@@ -95,15 +96,43 @@ function ChallengePage() {
     me: session.me, remaining: remainingAttempts, unconfirmed: Boolean(pendingSubmission) && phase !== 'submitting',
   })
   const privateView = session.myView?.data
-  const knownSubmittedResult = result && privateView && typeof privateView === 'object' && 'resultId' in privateView && privateView.resultId === result.id ? result.id : submittedResult
+  const isSubmittedResult = (id: string) => submittedResults.has(id) || Boolean(privateView && typeof privateView === 'object' && 'resultId' in privateView && privateView.resultId === id)
   const retainedChooser = participation.kind === 'checking' && connected && Boolean(session.me?.signedIn) && Boolean(trustedWorkspace) &&
     canChooseImage(participationState({ session: session.status, checked: 'ready', hongbao: session.hongbao, me: session.me, remaining: remainingAttempts, unconfirmed: Boolean(pendingSubmission) && phase !== 'submitting' }))
   const showChooser = canChooseImage(participation) || retainedChooser
   const privateWorkspaceVisible = !connected || identityVerified
   const canSelect = !busy && showChooser
   const canUpload = !busy && participation.kind === 'ready' && Boolean(config.data?.ownerConfigured)
-  const canSubmit = !busy && canSubmitScore(participation) && result?.id !== knownSubmittedResult
+  const canSubmit = !busy && canSubmitScore(participation)
   const score = connected && !identityVerified ? undefined : result?.score ?? progress?.score
+  const latestItem: GalleryItem | null = result ? {
+    id: result.id, score: result.score, nsfwScore: result.nsfwScore, saved: result.saved,
+    width: result.width, height: result.height, createdAt: 0, own: true,
+    passed: result.score >= challenge.minScore && result.score <= challenge.maxScore,
+  } : null
+  const selectedImage = identityVerified ? modal === 'result' ? latestItem : typeof modal === 'object' ? modal : null : null
+  const selectedResultId = selectedImage?.own && selectedImage.id !== result?.id ? selectedImage.id : null
+  const selectedResult = useQuery({
+    queryKey: ['player-result', galleryScope, selectedResultId],
+    enabled: Boolean(selectedResultId && canSubmitScore(participation)),
+    retry: false,
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+    queryFn: async ({ signal }) => {
+      const operationScope = scopeGuard.ticket()
+      const operationUser = identity?.subject()
+      const headers = await getHeaders()
+      signal.throwIfAborted()
+      scopeGuard.assertCurrent(operationScope)
+      const value = await apiJson<UploadResult>(`/api/uploads/${encodeURIComponent(selectedResultId!)}`, { headers, signal })
+      if (!identity || (await identity.get()).user.id !== operationUser) throw new Error('参与身份已变化，本次回应不再显示')
+      signal.throwIfAborted()
+      scopeGuard.assertCurrent(operationScope)
+      if (value.id !== selectedResultId || typeof value.score !== 'number') throw new Error('这次评分记录暂时无法读取')
+      return value
+    },
+  })
+  const viewerResult = selectedImage?.own ? selectedImage.id === result?.id ? result : selectedResult.data ?? null : null
 
   useEffect(() => {
     try {
@@ -146,7 +175,7 @@ function ChallengePage() {
       setRemaining(null)
       setPendingSubmission(null)
       pendingSubmissionRef.current = null
-      setSubmittedResult(null)
+      setSubmittedResults(new Set())
       suppressRestore.current = false
       let refreshing: Promise<void> | null = null
       let refreshAgain = false
@@ -170,7 +199,10 @@ function ChallengePage() {
               if (stale()) { refreshAgain = true; return }
               if (confirmed) {
                 const accepted = myView?.data && typeof myView.data === 'object' && 'resultId' in myView.data && myView.data.resultId === pending.resultId
-                if (!disposed && (accepted || me.claim || me.settled || me.why === 'already_claimed')) setSubmittedResult(pending.resultId)
+                if (!disposed && (accepted || me.claim || me.settled || me.why === 'already_claimed')) {
+                  const acceptedId = pending.resultId
+                  setSubmittedResults(previous => new Set(previous).add(acceptedId))
+                }
                 try { writePendingSubmission(window.sessionStorage, ready.hongbao.id, null, pending.userId ?? subject) } catch { /* Storage may be unavailable. */ }
                 pending = null
               }
@@ -203,7 +235,9 @@ function ChallengePage() {
       const scheduleRefresh = () => { window.clearTimeout(eventTimer); eventTimer = window.setTimeout(() => { void refresh() }, 80) }
       const invalidateIdentity = () => {
         currentIdentity.current?.clear()
-        setModal(null)
+        // Claim/status events also invalidate identity. Keep the selected result
+        // for the same verified actor; private content is gated while checking.
+        setModal(previous => previous === 'preview' ? null : previous)
         setSession(previous => ({ ...previous, participantStatus: 'checking' }))
       }
       unsubscribe.push(
@@ -242,6 +276,10 @@ function ChallengePage() {
     if (!preview) return
     return () => URL.revokeObjectURL(preview)
   }, [preview])
+  useEffect(() => {
+    if (!resultImage) return
+    return () => URL.revokeObjectURL(resultImage.url)
+  }, [resultImage])
 
   const upload = useMutation({
     retry: false,
@@ -279,8 +317,26 @@ function ChallengePage() {
       scopeGuard.assertCurrent(operationScope)
       return value
     },
-    onSuccess: (value, _file, context) => { if (!context || !scopeGuard.isCurrent(context.scope) || identity?.subject() !== context.userId) return; setResult(value); setRemaining(value.remaining); setSubmittedResult(null); setNotice(null); refreshGallery.current?.() },
-    onError: (error, _file, context) => { if (!context || !scopeGuard.isCurrent(context.scope) || identity?.subject() !== context.userId) return; setNotice({ kind: 'error', text: error.message }); refreshGallery.current?.() },
+    onSuccess: (value, file, context) => {
+      if (!context || !scopeGuard.isCurrent(context.scope) || identity?.subject() !== context.userId) return
+      setResultImage({ id: value.id, url: URL.createObjectURL(file) })
+      form.reset()
+      setPreview(null)
+      setFileMeta(null)
+      if (inputRef.current) inputRef.current.value = ''
+      idempotency.current = ''
+      setResult(value)
+      setRemaining(value.remaining)
+      setNotice(null)
+      setModal('result')
+      refreshGallery.current?.()
+    },
+    onError: (error, _file, context) => {
+      if (!context || !scopeGuard.isCurrent(context.scope) || identity?.subject() !== context.userId) return
+      if (error instanceof ApiRequestError && error.remaining !== undefined && error.remaining <= challenge.maxAttempts) setRemaining(error.remaining)
+      setNotice({ kind: 'error', text: error.message })
+      refreshGallery.current?.()
+    },
     onSettled: (_value, _error, _file, context) => { if (!context || !scopeGuard.isCurrent(context.scope)) return; actionInProgress.current = false; setPhase('idle') },
   })
 
@@ -308,12 +364,14 @@ function ChallengePage() {
     form.reset()
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Identity changes must clear private content before the next browser paint.
     setPreview(null)
+    setResultImage(null)
     setFileMeta(null)
     setResult(null)
     setRemaining(null)
     setNotice(null)
     setPhase('idle')
-    setSubmittedResult(null)
+    setSubmittedResults(new Set())
+    setModal(null)
     suppressRestore.current = false
     actionInProgress.current = false
     idempotency.current = ''
@@ -339,6 +397,7 @@ function ChallengePage() {
     suppressRestore.current = true
     setFileMeta({ name: file.name, size: file.size })
     setPreview(URL.createObjectURL(file))
+    setResultImage(null)
     idempotency.current = crypto.randomUUID()
     setNotice(null)
     setResult(null)
@@ -346,15 +405,18 @@ function ChallengePage() {
 
   function clearFile() {
     if (busy) return
+    suppressRestore.current = true
     form.reset()
     setPreview(null)
+    setResultImage(null)
     setFileMeta(null)
     setResult(null)
+    setModal(null)
     if (inputRef.current) inputRef.current.value = ''
   }
 
-  async function submitResult() {
-    if (!session.sdk || !result || !canSubmit || actionInProgress.current) return
+  async function submitResult(target: UploadResult) {
+    if (!session.sdk || !canSubmit || isSubmittedResult(target.id) || actionInProgress.current) return
     actionInProgress.current = true
     const operationScope = scopeGuard.ticket()
     const operationUser = identity?.subject()
@@ -371,9 +433,9 @@ function ChallengePage() {
       if (!scopeGuard.isCurrent(operationScope) || identity.subject() !== operationUser) return
       const current = participationState({ session: 'connected', checked: 'ready', hongbao: session.hongbao, me, remaining: remainingAttempts, unconfirmed: false })
       if (!canSubmitScore(current)) { void refreshParticipant.current?.(); throw new Error(current.description) }
-      persistPending({ resultId: result.id, name: me.signedIn ? me.name : '', userId: operationUser ?? undefined })
+      persistPending({ resultId: target.id, name: me.signedIn ? me.name : '', userId: operationUser ?? undefined })
       sent = true
-      const receipt = await session.sdk.submit(result.id)
+      const receipt = await session.sdk.submit(target.id)
       if (!identity || (await identity.get()).user.id !== operationUser) return
       if (!scopeGuard.isCurrent(operationScope)) return
       if (!receipt.judged) {
@@ -390,8 +452,8 @@ function ChallengePage() {
       if (receipt.judged) {
         const view = await session.sdk.myView()
         if ((await identity.get()).user.id !== operationUser || !scopeGuard.isCurrent(operationScope)) return
-        const accepted = view?.data && typeof view.data === 'object' && 'resultId' in view.data && view.data.resultId === result.id
-        if (receipt.claimed || receipt.settled || accepted) setSubmittedResult(result.id)
+        const accepted = view?.data && typeof view.data === 'object' && 'resultId' in view.data && view.data.resultId === target.id
+        if (receipt.claimed || receipt.settled || accepted) setSubmittedResults(previous => new Set(previous).add(target.id))
       }
       if (receipt.judged && (receipt.claimed || receipt.settled)) {
         setSession(previous => previous.me?.signedIn ? { ...previous, me: {
@@ -409,7 +471,22 @@ function ChallengePage() {
 
   const transition = { duration: reducedMotion ? 0 : .18 }
   const completed = ['claimed', 'settled', 'ended'].includes(participation.kind)
-  const estimate = score === undefined ? null : expectedReward(score, challenge)
+  const estimate = selectedImage?.own ? expectedReward(selectedImage.score, challenge) : null
+  const selectedMatched = selectedImage && selectedImage.score >= challenge.minScore && selectedImage.score <= challenge.maxScore
+  const viewingOwnResult = Boolean(selectedImage?.own)
+  const feedback = notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className="notice" data-kind={notice.kind}><CircleHelp size={20} aria-hidden="true" /><p>{notice.text}</p></div>
+  const resultActions = viewingOwnResult && <>
+    {completed ? <p className="viewer-participation">{participation.kind === 'claimed' && session.me?.signedIn && session.me.claim
+      ? `已领取 ${session.me.claim.amount} ${session.me.claim.unit}` : participation.title}</p> : <>
+      {estimate !== null && <div className="reward-preview"><span>预计奖励</span><strong>{formatReward(estimate)} <span>{session.hongbao?.unit ?? 'LDC'}</span></strong></div>}
+      <p className="upload-disclosure">{selectedMatched ? '最终奖励以红包站核验回执为准。' : '区间外不获奖，仍可提交评分记录。'}{selectedImage && !selectedImage.saved ? ' 本次未保存图片。' : ''}</p>
+      {selectedResult.isLoading && <p className="text-muted" role="status">正在读取评分记录…</p>}
+      {selectedResult.isError && !viewerResult && <div className="notice" role="status"><p>{selectedResult.error.message}</p><button type="button" className="text-action" onClick={() => void selectedResult.refetch()}>重新读取</button></div>}
+      {viewerResult && !isSubmittedResult(viewerResult.id) && canSubmitScore(participation) && <button type="button" className="button-primary upload-submit" disabled={!canSubmit} onClick={() => void submitResult(viewerResult)}>{phase === 'submitting' ? <LoaderCircle className="animate-spin" size={19} aria-hidden="true" /> : <Check size={19} aria-hidden="true" />}提交这次结果</button>}
+      {viewerResult && isSubmittedResult(viewerResult.id) && participation.kind === 'ready' && <button type="button" className="button-secondary upload-submit" disabled={busy} onClick={clearFile}><RotateCcw size={19} aria-hidden="true" />换张图片再试</button>}
+    </>}
+    {feedback}
+  </>
 
   return <Layout>
     <main className="challenge-page">
@@ -452,15 +529,12 @@ function ChallengePage() {
 
           <div className="feedback-section" aria-live="polite" aria-atomic="true">
             <AnimatePresence mode="wait">
-              {phase === 'processing' ? <motion.section key="processing" className="processing-state" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transition}><LoaderCircle className="animate-spin" size={24} aria-hidden="true" /><div><h2>正在处理这张图片</h2><p>{challenge.saveImages ? '保存图片与 AI 评分同时进行。' : 'AI 正在判断图片，请稍等片刻。'}</p></div></motion.section> : score !== undefined && <motion.section key={result?.id ?? 'previous-result'} className="score-result" initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
-                <div className="score-result-heading"><div><h2>{result ? '本次评分' : '最近一次评分'}</h2><p className="result-score" data-matched={matched}>{score.toFixed(1)}<span>%</span></p></div><span className="result-status" data-matched={matched}>{matched && <CheckCircle2 size={20} aria-hidden="true" />}{matched ? '符合目标区间' : '未在目标区间'}</span></div>
-                {!completed && estimate !== null && <div className="reward-preview"><span>预计奖励</span><strong>{formatReward(estimate)} <span>{session.hongbao?.unit ?? 'LDC'}</span></strong></div>}
-                {!completed && <p className="upload-disclosure">{matched ? '最终奖励以红包站核验回执为准。' : '区间外不获奖，仍可提交评分记录。'}{result && !result.saved ? ' 本次未保存图片。' : ''}</p>}
-                {result && knownSubmittedResult !== result.id && canSubmitScore(participation) && <button type="button" className="button-primary upload-submit" disabled={!canSubmit} onClick={() => void submitResult()}>{phase === 'submitting' ? <LoaderCircle className="animate-spin" size={19} aria-hidden="true" /> : <Check size={19} aria-hidden="true" />}提交这次结果</button>}
-                {result && knownSubmittedResult === result.id && participation.kind === 'ready' && <button type="button" className="button-secondary upload-submit" disabled={busy} onClick={clearFile}><RotateCcw size={19} aria-hidden="true" />换张图片再试</button>}
+              {phase === 'processing' ? <motion.section key="processing" className="processing-state" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={transition}><LoaderCircle className="animate-spin" size={24} aria-hidden="true" /><div><h2>正在处理这张图片</h2><p>{challenge.saveImages ? '保存图片与 AI 评分同时进行。' : 'AI 正在判断图片，请稍等片刻。'}</p></div></motion.section> : score !== undefined && <motion.section key={result?.id ?? 'previous-result'} className="score-result result-summary" initial={{ opacity: 0, y: reducedMotion ? 0 : 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={transition}>
+                <div><h2>{result ? '本次评分' : '最近一次评分'}</h2><p className="result-score" data-matched={matched}>{score.toFixed(1)}<span>%</span></p></div>
+                {result && <button type="button" className="button-secondary" onClick={() => setModal('result')}>查看本次结果<ArrowRight size={18} aria-hidden="true" /></button>}
               </motion.section>}
             </AnimatePresence>
-            {notice && <div role={notice.kind === 'error' ? 'alert' : 'status'} className="notice" data-kind={notice.kind}><CircleHelp size={20} aria-hidden="true" /><p>{notice.text}</p></div>}
+            {!viewingOwnResult && feedback}
             {session.status === 'standalone' && <p className="notice">请从红包页打开后参与，系统会带入真实规则与身份。</p>}
             {session.error && <p role="alert" className="notice" data-kind="error">{session.error}</p>}
             {config.isError && <p role="alert" className="notice" data-kind="error">服务配置暂时无法读取，请刷新页面。</p>}
@@ -471,7 +545,8 @@ function ChallengePage() {
           <AnimatePresence>{instructions && <motion.aside className="first-use-guide" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }} transition={transition} aria-label="首次玩法引导"><p>选择图片 → 查看评分 → 提交结果</p><p>分数落在目标区间，即可提交领取。</p><button type="button" className="text-action" onClick={dismissGuide}>知道了<Check size={18} aria-hidden="true" /></button></motion.aside>}</AnimatePresence>
         </section>
 
-        <Gallery key={galleryScope} items={identityVerified ? gallery.items : []} next={identityVerified ? gallery.next : null} visibility={gallery.visibility} isLoading={gallery.isLoading} isRefreshing={gallery.isRefreshing} error={gallery.error} loadingMore={gallery.loadingMore} onLoadMore={() => void gallery.loadMore()} onRefresh={() => { if (session.me?.signedIn) refreshGallery.current?.() }} showNsfw={showNsfw} getHeaders={getHeaders} likeCounts={gallery.likeCounts} pendingLikes={gallery.pendingLikes} canLike={identityVerified && gallery.canLike} onLike={gallery.like} onWatch={gallery.watch} />
+        <Gallery key={galleryScope} items={identityVerified ? gallery.items : []} next={identityVerified ? gallery.next : null} visibility={gallery.visibility} isLoading={gallery.isLoading} isRefreshing={gallery.isRefreshing} error={gallery.error} loadingMore={gallery.loadingMore} onLoadMore={() => void gallery.loadMore()} onRefresh={() => { if (session.me?.signedIn) refreshGallery.current?.() }} showNsfw={showNsfw} getHeaders={getHeaders} likeCounts={gallery.likeCounts} pendingLikes={gallery.pendingLikes} canLike={identityVerified && gallery.canLike} onLike={gallery.like} onWatch={gallery.watch}
+          selected={selectedImage} onSelect={setModal} selectedSource={selectedImage?.id === resultImage?.id ? resultImage?.url : undefined} selectedActions={resultActions} minScore={challenge.minScore} maxScore={challenge.maxScore} />
       </div>
       <footer className="challenge-footer"><p>Clef Omni · Cloudflare Workers AI</p><p>AI 分数表示匹配程度，奖励以红包站为准。</p></footer>
     </main>

@@ -38,19 +38,42 @@ async function chooseImage(frame, file = picture) {
   if (debug) console.log('File selected:', file.name, 'upload enabled:', await frame.getByRole('button', { name: '上传并评分' }).isEnabled())
 }
 
-async function fixture(overrides = {}, width = 390) {
-  const context = await browser.newContext({ viewport: { width, height: 900 }, reducedMotion: 'reduce' })
+const resultViewer = frame => frame.getByRole('dialog', { name: /^(图片详情|评分记录)$/ })
+
+async function closeViewer(frame) {
+  await resultViewer(frame).getByRole('button', { name: '关闭弹窗', exact: true }).click()
+  await resultViewer(frame).waitFor({ state: 'hidden' })
+}
+
+async function reopenResult(frame) {
+  await frame.getByRole('button', { name: '查看本次结果', exact: true }).click()
+  await resultViewer(frame).waitFor()
+  assert.equal(await frame.getByRole('dialog').count(), 1, 'The current score and gallery share one viewer')
+  return resultViewer(frame)
+}
+
+async function assertClearedUpload(frame) {
+  assert.equal(await frame.locator('.upload-preview, .file-meta').count(), 0, 'A scored file is removed from the upload form')
+  if (await frame.locator('#photo').count()) {
+    assert.deepEqual(await frame.locator('#photo').evaluate(input => ({ value: input.value, files: input.files.length })), { value: '', files: 0 }, 'The file input must also be reset')
+    assert.equal(await frame.getByRole('button', { name: '上传并评分', exact: true }).isDisabled(), true, 'A new upload needs a newly selected file')
+  }
+}
+
+async function fixture(overrides = {}, width = 390, height = 900) {
+  const context = await browser.newContext({ viewport: { width, height }, reducedMotion: 'reduce' })
   await context.route(`${appBase}/**`, async route => {
     const url = new URL(route.request().url())
     const response = await route.fetch({ url: `${base}${url.pathname}${url.search}` })
     await route.fulfill({ response })
   })
   await context.route(`${station}/sdk/v1.js`, route => route.fulfill({ contentType: 'text/javascript', body: sdkSource }))
-  await context.route(`${appBase}/api/config`, route => route.fulfill({ json: { ownerConfigured: true, hbSite: station } }))
+  await context.route(`${appBase}/api/config`, route => route.fulfill({ json: { ownerConfigured: true, hbSite: station, model: '@cf/cloudflare/clef-omni' } }))
   await context.route(`${appBase}/api/nonce`, route => route.fulfill({ json: { nonce: 'fixture-nonce' } }))
   let uploadCount = 0
   let galleryReads = 0
   let imageReads = 0
+  let resultReads = 0
   const likeBatches = []
   const likeTotals = new Map()
   const acceptedLikes = new Map()
@@ -71,10 +94,19 @@ async function fixture(overrides = {}, width = 390) {
     uploadCount += 1
     const actor = actorFor(route.request())
     await uploadGate
-    const uploadedResult = { id: resultId, score: overrides.score ?? 80, challenge: hongbao.params.challenge, attempt: 1, remaining: overrides.remaining ?? 2, saved: overrides.saved ?? true, nsfwScore: 5, width: 1, height: 1 }
+    if (overrides.uploadError) return route.fulfill({ status: overrides.uploadError.status ?? 409, json: overrides.uploadError.body })
+    const uploadedResult = { id: resultId, score: overrides.score ?? 80, challenge: hongbao.params.challenge, attempt: 1, remaining: overrides.remaining ?? 2, saved: overrides.saved ?? true, nsfwScore: overrides.nsfwScore === undefined ? 5 : overrides.nsfwScore, width: 1, height: 1 }
     actor.latest = uploadedResult
     actor.items = [{ ...uploadedResult, own: true, passed: uploadedResult.score >= 70, createdAt: Date.now() }, ...actor.items.filter(item => item.id !== resultId)]
     return route.fulfill({ json: uploadedResult })
+  })
+  await context.route(`${appBase}/api/uploads/*`, route => {
+    resultReads += 1
+    const actor = actorFor(route.request())
+    const id = new URL(route.request().url()).pathname.split('/').at(-1)
+    const record = actor.latest?.id === id ? actor.latest : actor.items.find(item => item.id === id && item.own)
+    if (!record) return route.fulfill({ status: 404, json: { error: '没有找到这次上传', code: 'result_not_found' } })
+    return route.fulfill({ json: { ...record, challenge: hongbao.params.challenge, attempt: record.attempt ?? 1, remaining: actor.latest?.remaining ?? actor.remaining } })
   })
   await context.route(`${appBase}/api/gallery**`, async route => {
     galleryReads += 1
@@ -123,7 +155,7 @@ async function fixture(overrides = {}, width = 390) {
   if (debug) page.on('request', request => { if (request.url().startsWith(`${appBase}/api/`)) console.log('API request:', request.method(), new URL(request.url()).pathname) })
   page.on('pageerror', error => errors.push(error.message))
   // Use the official SDK with an in-memory station bridge; no real AI or reward calls.
-  await context.route(`${station}/__participant_harness`, route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><style>body{margin:0}iframe{width:100%;height:100vh;border:0}</style><iframe src="${appBase}/"></iframe>` }))
+  await context.route(`${station}/__participant_harness`, route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><style>body{margin:0}iframe{display:block;width:100%;height:100vh;border:0}</style><iframe src="${appBase}/"></iframe>` }))
   await page.addInitScript(state => {
     if (state.debug) window.addEventListener('focus', () => console.log('Harness focus:', parent === window ? 'station' : 'challenge'))
     if (state.debug) for (const type of ['pointerdown', 'click', 'submit']) document.addEventListener(type, event => {
@@ -179,7 +211,7 @@ async function fixture(overrides = {}, width = 390) {
   }, state)
   await page.goto(`${station}/__participant_harness`, { waitUntil: 'networkidle' })
   const frame = page.frameLocator('iframe')
-  return { context, page, frame, uploads: () => uploadCount, galleryReads: () => galleryReads,
+  return { context, page, frame, uploads: () => uploadCount, galleryReads: () => galleryReads, resultReads: () => resultReads,
     imageReads: () => imageReads, likeBatches, likeTotals, releaseLike: () => releaseLike?.(),
     replaceGallery: items => { actors.get(currentActor).items = items }, releaseUpload: () => releaseUpload?.(),
     switchActor: async (id, name = '小明') => {
@@ -212,10 +244,167 @@ try {
     const latest = { id: resultId, score: 85, challenge: '找猫', attempt: 3, remaining: 0, saved: false, nsfwScore: null, width: null, height: null }
     const { context, frame } = await fixture({ galleryLatest: latest, galleryRemaining: 0 })
     await frame.getByRole('heading', { name: '上传机会已用完' }).waitFor()
-    await frame.getByRole('button', { name: '提交这次结果' }).waitFor()
     assert.equal(await frame.locator('#photo').count(), 0)
-    assert.match(await frame.locator('.reward-preview').innerText(), /1\.00 LDC/)
-    assert.match(await frame.locator('.score-result').innerText(), /本次未保存图片/)
+    assert.equal(await frame.getByRole('dialog').count(), 0, 'Restoring a score must not interrupt the page with a modal')
+    assert.equal(await frame.getByRole('button', { name: '提交这次结果' }).count(), 0, 'Submission belongs to the explicit result viewer')
+    const viewer = await reopenResult(frame)
+    await viewer.getByRole('button', { name: '提交这次结果' }).waitFor()
+    assert.match(await viewer.locator('.reward-preview').innerText(), /1\.00 LDC/)
+    assert.match(await viewer.innerText(), /未保存图片|没有保存图片|只保存评分/)
+    assert.equal(await viewer.locator('img').count(), 0, 'A reloaded unsaved score cannot recover the local image')
+    await context.close()
+  }
+  {
+    console.log('Checking a scored upload clears the chooser and opens the shared result viewer')
+    const { context, page, frame, uploads, imageReads } = await fixture()
+    await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
+    await chooseImage(frame)
+    await frame.getByRole('button', { name: '上传并评分', exact: true }).click()
+    const viewer = resultViewer(frame)
+    await viewer.waitFor()
+    assert.equal(await frame.getByRole('dialog').count(), 1)
+    await assertClearedUpload(frame)
+    const details = await viewer.innerText()
+    assert.match(details, /匹配评分[\s\S]*80\.0%/)
+    assert.match(details, /NSFW[\s\S]*5\.0%/)
+    assert.match(details, /70\s*[–—~-]\s*100\s*%/)
+    assert.match(details, /Clef Omni/)
+    assert.match(details, /1\s*[×x]\s*1/)
+    await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
+    assert.equal(await frame.locator('.score-result').getByRole('button', { name: '提交这次结果', exact: true }).count(), 0)
+    await viewer.locator('.detail-photo img').waitFor()
+    await page.screenshot({ path: 'shots/participant-result-390.png' })
+    await closeViewer(frame)
+    assert.equal(await frame.getByRole('button', { name: '选择图片', exact: true }).isEnabled(), true, 'The upload area is ready for the next choice')
+    assert.equal(await frame.getByRole('button', { name: '提交这次结果', exact: true }).count(), 0)
+    await reopenResult(frame)
+    await viewer.locator('.detail-photo img').waitFor()
+    await closeViewer(frame)
+    const galleryPhoto = frame.locator(`[data-gallery-id="${resultId}"] .gallery-photo`)
+    await galleryPhoto.scrollIntoViewIfNeeded()
+    await galleryPhoto.locator('img').waitFor()
+    const reads = imageReads()
+    await galleryPhoto.click()
+    await viewer.waitFor()
+    await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
+    assert.equal(await frame.getByRole('dialog').count(), 1, 'Opening this result from its gallery card reuses the same viewer')
+    await viewer.locator('.detail-photo img').waitFor()
+    assert.equal(imageReads(), reads, 'Reopening the shared viewer reuses its private image cache')
+    await viewer.locator('.detail-like').click()
+    await viewer.getByRole('button', { name: '点赞，当前 1 次', exact: true }).waitFor()
+    assert.equal(imageReads(), reads, 'Detail likes do not download the photo again')
+    await reloadChallenge(page)
+    await frame.locator('.score-result').waitFor()
+    assert.equal(await frame.getByRole('dialog').count(), 0, 'Reload restores the summary without automatically reopening a result')
+    await assertClearedUpload(frame)
+    await reopenResult(frame)
+    await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
+    assert.equal(uploads(), 1, 'Closing, reopening and reloading do not submit another upload')
+    await closeViewer(frame)
+    await chooseImage(frame, { ...picture, name: 'next-choice.png' })
+    assert.equal(await frame.getByRole('button', { name: '上传并评分', exact: true }).isEnabled(), true)
+    await context.close()
+  }
+  for (const width of [320, 1440]) {
+    console.log(`Checking the ${width}px result viewer in a short viewport`)
+    const height = 640
+    const { context, page, frame } = await fixture({}, width, height)
+    await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
+    await chooseImage(frame)
+    await frame.getByRole('button', { name: '上传并评分', exact: true }).click()
+    const viewer = resultViewer(frame)
+    await viewer.waitFor()
+    const dimensions = await viewer.evaluate(panel => {
+      const bounds = panel.getBoundingClientRect()
+      const overlay = panel.parentElement
+      return { left: bounds.left, right: bounds.right, viewport: window.innerWidth,
+        documentWidth: document.documentElement.scrollWidth, panelWidth: panel.clientWidth, contentWidth: panel.scrollWidth,
+        scrollHeight: overlay.scrollHeight, clientHeight: overlay.clientHeight }
+    })
+    assert.ok(dimensions.left >= 0 && dimensions.right <= dimensions.viewport + 1, `The ${width}px viewer stays within the viewport`)
+    assert.ok(dimensions.documentWidth <= dimensions.viewport && dimensions.contentWidth <= dimensions.panelWidth + 1, `The ${width}px viewer has no horizontal overflow`)
+    const submit = viewer.getByRole('button', { name: '提交这次结果', exact: true })
+    await submit.scrollIntoViewIfNeeded()
+    const button = await submit.boundingBox()
+    assert.ok(button && button.y >= 0 && button.y + button.height <= height + 1, `The ${width}px submit action is reachable without clipping`)
+    assert.ok(dimensions.scrollHeight > dimensions.clientHeight, `The ${width}px short viewport can scroll the full viewer`)
+    assert.ok(await viewer.evaluate(panel => panel.parentElement.scrollTop > 0), `The ${width}px viewer scrolls to its submit action`)
+    await page.screenshot({ path: `shots/participant-result-${width}.png` })
+    await context.close()
+  }
+  {
+    console.log('Checking an older own passing score remains independently submittable and other players have no reward actions')
+    const olderId = '6b5f5f00-1aaa-4d11-bccc-000000000080'
+    const otherId = '6b5f5f00-1aaa-4d11-bccc-000000000035'
+    const latest = { id: resultId, score: 35, challenge: '找猫', attempt: 2, remaining: 1, saved: true, nsfwScore: 5, width: 1, height: 1 }
+    const older = { ...latest, id: olderId, score: 80, attempt: 1, own: true, passed: true, createdAt: 1 }
+    const other = { ...latest, id: otherId, own: false, passed: false, createdAt: 2 }
+    const { context, page, frame, resultReads, uploads } = await fixture({ galleryLatest: latest, galleryItems: [{ ...latest, own: true, passed: false, createdAt: 3 }, other, older] })
+    await frame.locator('.score-result').getByText('35.0', { exact: false }).waitFor()
+    await frame.locator(`[data-gallery-id="${otherId}"] .gallery-photo`).click()
+    const viewer = resultViewer(frame)
+    await viewer.waitFor()
+    assert.equal(await viewer.getByRole('button', { name: '提交这次结果', exact: true }).count(), 0)
+    assert.equal(await viewer.locator('.reward-preview, .image-detail-actions').count(), 0, 'Other players’ works have no reward actions')
+    assert.equal(resultReads(), 0, 'Other players’ private scoring records are not requested')
+    await closeViewer(frame)
+    await frame.locator(`[data-gallery-id="${olderId}"] .gallery-photo`).click()
+    await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
+    assert.match(await viewer.locator('.reward-preview').innerText(), /1\.00 LDC/, 'Reward uses the selected 80% score rather than the latest 35% score')
+    assert.equal(resultReads(), 1, 'An older own result is recovered with one authenticated read')
+    assert.match(await frame.locator('.score-result').innerText(), /35\.0/, 'Inspecting an older score does not replace the latest result')
+    await viewer.getByRole('button', { name: '提交这次结果', exact: true }).click()
+    await frame.getByRole('heading', { name: '奖励已领取', exact: true }).waitFor()
+    assert.deepEqual(await page.evaluate(() => ({ count: window.fixture.submits, id: window.fixture.mine[0]?.input })), { count: 1, id: olderId }, 'The selected older result ID is the one submitted to the station')
+    assert.equal(await frame.locator('#photo').count(), 0, 'Claiming an older result also locks further uploads')
+    assert.equal(uploads(), 0, 'Recovering or claiming an old result never uploads its image again')
+    await context.close()
+  }
+  {
+    console.log('Checking unsaved local result preview, NSFW cover and score-only recovery after reload')
+    const { context, page, frame, imageReads } = await fixture({ saved: false, nsfwScore: 90, hongbao: { ...hongbao, params: { ...hongbao.params, saveImages: false } } })
+    await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
+    await chooseImage(frame)
+    await frame.getByRole('button', { name: '上传并评分', exact: true }).click()
+    const viewer = resultViewer(frame)
+    await viewer.waitFor()
+    await assertClearedUpload(frame)
+    await viewer.locator('.detail-photo img').waitFor()
+    assert.match(await viewer.locator('.detail-photo img').getAttribute('src'), /^blob:/, 'Only the local selected-image URL is available when saving is off')
+    assert.equal(await viewer.locator('.detail-photo').getAttribute('data-covered'), 'true')
+    await viewer.getByText('NSFW', { exact: true }).waitFor()
+    await viewer.getByRole('button', { name: 'NSFW，点击查看图片', exact: true }).click()
+    assert.equal(await viewer.locator('.detail-photo').getAttribute('data-covered'), 'false')
+    assert.match(await viewer.innerText(), /NSFW[\s\S]*90\.0%/)
+    assert.equal(imageReads(), 0, 'An unsaved image is never requested from the private R2 route')
+    await closeViewer(frame)
+    await reopenResult(frame)
+    await viewer.locator('.detail-photo img').waitFor()
+    await reloadChallenge(page)
+    await frame.locator('.score-result').waitFor()
+    assert.equal(await frame.getByRole('dialog').count(), 0)
+    await reopenResult(frame)
+    assert.equal(await viewer.locator('img').count(), 0, 'A local image is unavailable after reload when saving is off')
+    assert.match(await viewer.innerText(), /未保存图片|没有保存图片|只保存评分/)
+    await viewer.getByRole('button', { name: '提交这次结果', exact: true }).waitFor()
+    assert.equal(imageReads(), 0)
+    await context.close()
+  }
+  {
+    console.log('Checking duplicate rejection consumes one attempt without a new score or automatic retry')
+    const message = '这张图片已提交过，本次已消耗 1 次机会，请换一张'
+    const { context, page, frame, uploads } = await fixture({ uploadError: { status: 409, body: { code: 'duplicate_image', error: message, attempt: 1, remaining: 2 } } })
+    await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
+    assert.equal(await frame.getByText(message, { exact: true }).count(), 0, 'Duplicate guidance appears only after an actual duplicate')
+    assert.doesNotMatch(await frame.locator('.upload-disclosure').allTextContents().then(text => text.join(' ')), /重复|同一张/)
+    await chooseImage(frame)
+    await frame.getByRole('button', { name: '上传并评分', exact: true }).click()
+    await frame.getByText(message, { exact: true }).waitFor()
+    assert.match(await frame.locator('.challenge-summary').innerText(), /2\s*次/, 'The upload-error response lowers remaining attempts immediately even while gallery reads still report 3')
+    assert.equal(await frame.getByRole('dialog').count(), 0)
+    assert.equal(await frame.locator('.score-result, .gallery-item').count(), 0)
+    assert.equal(uploads(), 1)
+    assert.equal(await page.evaluate(() => window.fixture.submits), 0, 'A rejected duplicate never sends a reward submission')
     await context.close()
   }
   {
@@ -253,9 +442,12 @@ try {
     await chooseImage(frame)
     await frame.getByRole('button', { name: '上传并评分' }).click()
     await frame.getByRole('heading', { name: '上传机会已用完' }).waitFor()
+    await resultViewer(frame).waitFor()
     await switchActor('456')
     await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
     assert.equal(await frame.locator('.score-result, .upload-preview, .file-meta').count(), 0)
+    assert.equal(await frame.getByRole('dialog').count(), 0, 'A private viewer closes when the numeric account changes')
+    assert.equal(await frame.locator('.detail-photo, .reward-preview').count(), 0)
     assert.match(await frame.locator('.challenge-summary').innerText(), /3\s*次/)
     assert.equal(await frame.locator('.gallery-item').count(), 0)
     await context.close()
@@ -275,6 +467,7 @@ try {
     await response
     await frame.getByText('participant-b.png', { exact: true }).waitFor()
     assert.equal(await frame.locator('.score-result, .gallery-item').count(), 0)
+    assert.equal(await frame.getByRole('dialog').count(), 0, 'The previous account’s late upload cannot open a private result viewer')
     assert.equal(await frame.getByRole('button', { name: '上传并评分' }).isEnabled(), true)
     await context.close()
   }
@@ -291,6 +484,7 @@ try {
     await page.evaluate(() => window.fixture.releaseSubmit())
     await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
     assert.equal(await frame.locator('.claimed-reward, .score-result').count(), 0)
+    assert.equal(await frame.getByRole('dialog').count(), 0)
     assert.equal(await frame.getByRole('heading', { name: '奖励已领取' }).count(), 0)
     assert.equal(await page.evaluate(() => window.fixture.submits), 1)
     await context.close()
@@ -414,12 +608,16 @@ try {
     await chooseImage(frame)
     await frame.getByRole('button', { name: '上传并评分' }).click()
     await frame.getByRole('button', { name: '提交这次结果' }).click()
-    await frame.getByRole('button', { name: '换张图片再试' }).waitFor()
-    await frame.getByRole('button', { name: '换张图片再试' }).click()
+    await page.waitForFunction(() => window.fixture.submits === 1)
+    await frame.getByText('结果已提交，请查看红包页的判定', { exact: true }).first().waitFor()
+    await closeViewer(frame)
     await frame.getByRole('button', { name: '选择图片', exact: true }).waitFor()
     await reloadChallenge(page)
     await frame.locator('.score-result').getByText('35.0', { exact: false }).waitFor()
+    assert.equal(await frame.getByRole('dialog').count(), 0)
     assert.equal(await frame.locator('#photo').count(), 1)
+    await reopenResult(frame)
+    assert.equal(await resultViewer(frame).getByRole('button', { name: '提交这次结果', exact: true }).count(), 0, 'An accepted score remains non-submittable after reload')
     assert.equal(await page.evaluate(() => window.fixture.submits), 1)
     await context.close()
   }
